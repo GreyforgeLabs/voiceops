@@ -1,0 +1,5 @@
+node_modules/
+voiceops.config.json
+*.log
+.env
+.env.local

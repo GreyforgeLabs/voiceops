@@ -1,0 +1,25 @@
+{
+  "_comment": "VoiceOps configuration. Copy to voiceops.config.json and fill in real values.",
+  "voiceChannelId": "YOUR_VOICE_CHANNEL_ID",
+  "guildId": "YOUR_GUILD_ID",
+  "magisterId": "YOUR_DISCORD_USER_ID",
+  "tts": {
+    "voice": "af_bella",
+    "speed": 1.0
+  },
+  "vad": {
+    "silenceDurationMs": 800,
+    "minUtteranceDurationMs": 500,
+    "rmsThreshold": 0.008
+  },
+  "asr": {
+    "model": "whisper-1",
+    "language": "en"
+  },
+  "pipeline": {
+    "maxUtteranceDurationMs": 30000,
+    "utterancesPerMinuteLimit": 20,
+    "thinkingCueEnabled": true,
+    "thinkingCueText": "Let me think about that..."
+  }
+}

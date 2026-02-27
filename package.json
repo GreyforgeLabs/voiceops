@@ -1,0 +1,25 @@
+{
+  "name": "voiceops",
+  "version": "0.1.0",
+  "description": "VoiceOps: Discord voice integration for OpenClaw/Striker",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "start": "node index.mjs",
+    "dev": "node --watch index.mjs"
+  },
+  "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.18.0",
+    "discord.js": "^14.16.0",
+    "kokoro-js": "^1.2.1",
+    "prism-media": "^1.3.5",
+    "ws": "^8.18.0"
+  },
+  "notes": {
+    "@ricky0123/vad-node": "Benchmarked (43ms cold-start, 0.42ms/chunk). NOT a runtime dep — pipeline uses AfterSilence+RMS gate. Conflicts with kokoro-js ONNX version. Add back if Silero VAD needed in Phase 4."
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
