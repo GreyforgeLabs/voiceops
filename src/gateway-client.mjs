@@ -175,7 +175,7 @@ export class GatewayClient {
       this._pending.delete(msg.id);
       clearTimeout(timer);
       if (msg.ok) resolve(msg.payload);
-      else reject(new Error(msg.payload?.message ?? 'Gateway error'));
+      else reject(new Error(msg.error?.message ?? 'Gateway error'));
       return;
     }
 

@@ -168,6 +168,7 @@ export class DiscordVoiceManager {
 
   /** Schedule a voice channel rejoin with guild membership check. */
   _scheduleVoiceRejoin(attempt = 1) {
+    if (!this._listening) return; // leave() was called — don't retry
     const delay = Math.min(5000 * attempt, 60_000); // cap at 60s
     console.log(`[VC] Scheduling voice rejoin in ${delay}ms (attempt ${attempt})...`);
     setTimeout(async () => {

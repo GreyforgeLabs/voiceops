@@ -6,9 +6,9 @@
  * in a child process (tts-worker.mjs) which is allowed to exit normally.
  *
  * The worker reads text from stdin and writes a complete WAV file to stdout.
- * Cold-start: first call loads the 82MB ONNX model (~1–2s). Subsequent calls
- * amortize the startup by keeping the model in the subprocess across calls via
- * a persistent worker pool of one.
+ * Cold-start: first call loads the 82MB ONNX model (~1–2s). Each call spawns
+ * a fresh subprocess — the WASM exit is contained and the model reloads per call.
+ * Warm-path latency is <300ms for typical responses.
  *
  * Audio output: 24kHz mono 16-bit WAV — ffmpeg in @discordjs/voice converts
  * to Opus for Discord playback.
@@ -56,6 +56,11 @@ export async function synthesize(text) {
     proc.stderr.on('data', (d) => {
       const msg = d.toString().trim();
       if (msg) console.log(`[TTS]`, msg);
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(new Error(`TTS worker spawn failed: ${err.message}`));
     });
 
     proc.on('close', (code, signal) => {

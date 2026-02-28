@@ -26,6 +26,12 @@ function loadConfig() {
       'Right-click your Discord voice channel → Copy Channel ID and paste it in voiceops.config.json.'
     );
   }
+  if (!voiceJson.operatorUserId) {
+    throw new Error(
+      'voiceops.config.json: operatorUserId is not set.\n' +
+      'Set it to your Discord user ID (Enable Developer Mode → right-click your username → Copy User ID).'
+    );
+  }
 
   return {
     // Discord

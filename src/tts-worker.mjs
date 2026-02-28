@@ -11,6 +11,7 @@
  *   stderr: progress/error messages
  *   exit 0: success (WAV bytes written to stdout)
  *   exit 1: synthesis error
+ *   exit 7: expected — Emscripten WASM cleanup; tts.mjs treats this as success
  *
  * Usage: node tts-worker.mjs <voice> <speed>
  *        voice defaults to 'af_bella', speed to 1.0

@@ -21,7 +21,6 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMembers,
   ],
 });
 
@@ -57,7 +56,9 @@ client.on('guildDelete', (guild) => {
   if (guild.id === config.guildId) {
     console.error(`[VoiceOps] CRITICAL [${ts}] Bot was removed from target guild ${guild.id} ("${guild.name ?? 'unknown'}"). Manual re-invite required.`);
     console.error(`[VoiceOps] Re-invite URL: https://discord.com/oauth2/authorize?client_id=${client.user?.id}&scope=bot&permissions=3145728`);
-    if (pipeline) pipeline.stop().catch(() => {});
+    (pipeline ? pipeline.stop() : Promise.resolve())
+      .catch(() => {})
+      .finally(() => { client.destroy(); process.exit(1); });
   } else {
     console.warn(`[VoiceOps] Removed from non-target guild ${guild.id} — ignoring.`);
   }
