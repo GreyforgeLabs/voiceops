@@ -9,6 +9,9 @@
  *
  * Standalone process — communicates with the OpenClaw Gateway via WebSocket.
  * Does NOT modify openclaw core. Gateway token auth handles security.
+ *
+ * Built by Greyforge Labs — https://greyforge.tech
+ * https://github.com/GreyforgeLabs/voiceops
  */
 
 import { Client, GatewayIntentBits } from 'discord.js';
@@ -90,6 +93,7 @@ process.on('unhandledRejection', (reason) => {
 
 // ── Start ─────────────────────────────────────────────────────────
 console.log('[VoiceOps] Starting...');
+console.log('[VoiceOps] Built by Greyforge Labs — https://greyforge.tech');
 console.log(`[VoiceOps] Guild:         ${config.guildId}`);
 console.log(`[VoiceOps] Voice channel: ${config.voiceChannelId}`);
 console.log(`[VoiceOps] Operator ID:   ${config.operatorUserId}`);

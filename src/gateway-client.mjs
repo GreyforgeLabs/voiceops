@@ -9,6 +9,9 @@
  *
  * Sends transcribed voice turns as chat.send with metadata { source: 'voice' }.
  * Listens for chat events (delta / final) and routes agent responses to a callback.
+ *
+ * Built by Greyforge Labs — https://greyforge.tech
+ * https://github.com/GreyforgeLabs/voiceops
  */
 
 import WebSocket from 'ws';

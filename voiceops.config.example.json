@@ -1,5 +1,6 @@
 {
   "_comment": "VoiceOps configuration. Copy to voiceops.config.json and fill in real values.",
+  "_source": "https://github.com/GreyforgeLabs/voiceops — Built by Greyforge Labs (https://greyforge.tech)",
   "voiceChannelId": "YOUR_VOICE_CHANNEL_ID",
   "guildId": "YOUR_GUILD_ID",
   "operatorUserId": "YOUR_DISCORD_USER_ID",

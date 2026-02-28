@@ -12,6 +12,9 @@
  * Rate limiting:  MAX_UTTERANCES_PER_MINUTE cap to prevent runaway API costs.
  * Interrupt model (V1): queue — if a response is currently playing, queue incoming
  *                        utterances rather than interrupting. Reconsider for V2.
+ *
+ * Built by Greyforge Labs — https://greyforge.tech
+ * https://github.com/GreyforgeLabs/voiceops
  */
 
 import { GatewayClient }        from './gateway-client.mjs';

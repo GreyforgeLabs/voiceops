@@ -2,6 +2,20 @@
   "name": "voiceops",
   "version": "0.1.0",
   "description": "VoiceOps: Full-duplex Discord voice pipeline for OpenClaw",
+  "author": "Greyforge Labs (https://greyforge.tech)",
+  "homepage": "https://greyforge.tech/chronicles/voiceops-integration",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GreyforgeLabs/voiceops.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GreyforgeLabs/voiceops/issues"
+  },
+  "keywords": [
+    "discord", "voice", "tts", "asr", "whisper", "kokoro",
+    "full-duplex", "openclaw", "voice-bot", "discord-bot"
+  ],
+  "license": "MIT",
   "type": "module",
   "main": "index.mjs",
   "scripts": {

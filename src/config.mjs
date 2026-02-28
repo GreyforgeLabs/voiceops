@@ -1,5 +1,8 @@
 /**
  * config.mjs — Load and merge OpenClaw global config + VoiceOps-specific config.
+ *
+ * Built by Greyforge Labs — https://greyforge.tech
+ * https://github.com/GreyforgeLabs/voiceops
  */
 
 import { readFileSync } from 'fs';

@@ -15,6 +15,9 @@
  *
  * Usage: node tts-worker.mjs <voice> <speed>
  *        voice defaults to 'af_bella', speed to 1.0
+ *
+ * Built by Greyforge Labs — https://greyforge.tech
+ * https://github.com/GreyforgeLabs/voiceops
  */
 
 import { KokoroTTS } from 'kokoro-js';

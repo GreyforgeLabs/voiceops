@@ -8,9 +8,12 @@
  *   - Playing TTS WAV responses via AudioPlayer
  *   - Reconnect-on-disconnect
  *
- * One-shot stream pattern (per Vulcan audit):
+ * One-shot stream pattern:
  *   receiver.subscribe(userId) returns a stream that ends after silence.
  *   We re-subscribe immediately on each 'end' event to stay always-listening.
+ *
+ * Built by Greyforge Labs — https://greyforge.tech
+ * https://github.com/GreyforgeLabs/voiceops
  */
 
 import {

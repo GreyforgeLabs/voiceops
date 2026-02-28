@@ -1,9 +1,18 @@
+<div align="center">
+
+**[Greyforge Labs](https://greyforge.tech)** &nbsp;·&nbsp; [OpenForge](https://greyforge.tech/openforge) &nbsp;·&nbsp; [Chronicle](https://greyforge.tech/chronicles/voiceops-integration) &nbsp;·&nbsp; [GitHub](https://github.com/GreyforgeLabs/voiceops)
+
+</div>
+
+---
+
 # VoiceOps
 
 **Full-duplex Discord voice pipeline for OpenClaw.**
 Speak into Discord. An AI agent listens, thinks, and speaks back — hands-free, no buttons, no modes.
 
 > The first fully operational voice bot built for the OpenClaw agent platform.
+> Built by [Greyforge Labs](https://greyforge.tech).
 > Validated by adversarial multi-agent pre-build audit before a single line of implementation was written.
 
 Chronicle: [greyforge.tech/chronicles/voiceops-integration](https://greyforge.tech/chronicles/voiceops-integration)
@@ -388,3 +397,11 @@ VoiceOps was designed as a standalone satellite process for the OpenClaw platfor
 Before implementation began, the architecture was validated by an adversarial multi-agent pre-build audit (a dedicated team of AI agents stress-testing the design for failure modes, dependency conflicts, and ONNX version collisions). The VAD architecture note above is one direct output of that audit.
 
 Read the full chronicle: [greyforge.tech/chronicles/voiceops-integration](https://greyforge.tech/chronicles/voiceops-integration)
+
+---
+
+<div align="center">
+
+Built by **[Greyforge Labs](https://greyforge.tech)** &nbsp;·&nbsp; [OpenForge](https://greyforge.tech/openforge) &nbsp;·&nbsp; [GitHub](https://github.com/GreyforgeLabs) &nbsp;·&nbsp; MIT License
+
+</div>

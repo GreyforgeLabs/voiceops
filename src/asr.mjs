@@ -5,6 +5,9 @@
  * in a WAV header, and sends it to OpenAI's whisper-1 endpoint.
  *
  * Returns the transcript string, or null if the audio is too quiet / empty.
+ *
+ * Built by Greyforge Labs — https://greyforge.tech
+ * https://github.com/GreyforgeLabs/voiceops
  */
 
 import { config } from './config.mjs';

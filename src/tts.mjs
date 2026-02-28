@@ -12,6 +12,9 @@
  *
  * Audio output: 24kHz mono 16-bit WAV — ffmpeg in @discordjs/voice converts
  * to Opus for Discord playback.
+ *
+ * Built by Greyforge Labs — https://greyforge.tech
+ * https://github.com/GreyforgeLabs/voiceops
  */
 
 import { spawn } from 'child_process';
