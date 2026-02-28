@@ -18,9 +18,8 @@ import { config } from './config.mjs';
 const RECONNECT_DELAY_MS   = 3000;
 const PING_INTERVAL_MS     = 30_000;
 const REQUEST_TIMEOUT_MS   = 60_000;
-const VOICE_SESSION_KEY    = 'agent:main:voice:magister';
 
-// Strip agent signature line (e.g. "\n\n— ⚡ Striker · Opus")
+// Strip agent signature line appended by the AI agent (e.g. "\n\n— AgentName · Model")
 function stripSignature(text) {
   return (text ?? '').replace(/\n\n—[^\n]*$/, '').trim();
 }
@@ -139,7 +138,7 @@ export class GatewayClient {
 
     // Fire the request (don't await — just need it to be accepted)
     this._request('chat.send', {
-      sessionKey:     VOICE_SESSION_KEY,
+      sessionKey:     config.voiceSessionKey,
       message:        text,
       idempotencyKey,
     }).catch((err) => {

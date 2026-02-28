@@ -3,7 +3,7 @@
  *
  * Wires together: Discord RX → ASR → Gateway → TTS → Discord TX
  *
- *   1. DiscordVoiceManager calls onUtterance(pcmBuffer) when Magister finishes speaking
+ *   1. DiscordVoiceManager calls onUtterance(pcmBuffer) when Operator finishes speaking
  *   2. pipeline transcribes PCM → text (Whisper API)
  *   3. pipeline sends transcript to OpenClaw Gateway as a voice-sourced chat turn
  *   4. Gateway responds; pipeline synthesizes the response text via kokoro-js TTS
@@ -44,7 +44,7 @@ export class VoicePipeline {
   async start() {
     await this._gateway.connect();
     await this._voice.join();
-    console.log('[Pipeline] VoiceOps pipeline running. Listening for Magister.');
+    console.log('[Pipeline] VoiceOps pipeline running. Listening for Operator.');
   }
 
   /** Called by DiscordVoiceManager when an utterance PCM buffer is ready. */

@@ -1,5 +1,5 @@
 /**
- * VoiceOps — Discord Voice Integration for OpenClaw/Striker
+ * VoiceOps — Discord Voice Integration for OpenClaw
  *
  * Pipeline: Discord RX → Opus decode → silence-gated VAD → Whisper ASR
  *           → OpenClaw Gateway → kokoro-js TTS → Discord TX
@@ -91,7 +91,7 @@ process.on('unhandledRejection', (reason) => {
 console.log('[VoiceOps] Starting...');
 console.log(`[VoiceOps] Guild:         ${config.guildId}`);
 console.log(`[VoiceOps] Voice channel: ${config.voiceChannelId}`);
-console.log(`[VoiceOps] Magister ID:   ${config.magisterId}`);
+console.log(`[VoiceOps] Operator ID:   ${config.operatorUserId}`);
 console.log(`[VoiceOps] Gateway port:  ${config.gatewayPort}`);
 console.log(`[VoiceOps] TTS voice:     ${config.tts?.voice}`);
 console.log('');

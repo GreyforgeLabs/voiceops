@@ -31,12 +31,13 @@ function loadConfig() {
     // Discord
     discordToken:   ocJson.channels?.discord?.token,
     guildId:        voiceJson.guildId,
-    magisterId:     voiceJson.magisterId,
+    operatorUserId: voiceJson.operatorUserId,
     voiceChannelId: voiceJson.voiceChannelId,
 
     // OpenClaw Gateway
-    gatewayPort:    ocJson.gateway?.port  ?? 18789,
-    gatewayToken:   ocJson.gateway?.auth?.token,
+    gatewayPort:       ocJson.gateway?.port  ?? 18789,
+    gatewayToken:      ocJson.gateway?.auth?.token,
+    voiceSessionKey:   voiceJson.voiceSessionKey ?? 'agent:main:voice:user',
 
     // OpenAI (Whisper ASR)
     openaiApiKey:   ocJson.env?.OPENAI_API_KEY,

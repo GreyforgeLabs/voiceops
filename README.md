@@ -40,7 +40,7 @@ VoiceOps is a standalone process that plugs into the OpenClaw Gateway over WebSo
         ▼
   ┌─────────────┐
   │  Discord RX │  @discordjs/voice receives Opus-encoded audio
-  │  (Opus UDP) │  from the target user (Magister) only.
+  │  (Opus UDP) │  from the operator (target Discord user) only.
   └──────┬──────┘
          │  Opus frames (48kHz stereo)
          ▼
@@ -65,7 +65,7 @@ VoiceOps is a standalone process that plugs into the OpenClaw Gateway over WebSo
          ▼
   ┌──────────────────┐
   │  OpenClaw        │  WebSocket v3 Gateway (ws://127.0.0.1:18789)
-  │  Gateway Client  │  chat.send → agent:main:voice:magister session
+  │  Gateway Client  │  chat.send → configured voiceSessionKey session
   └──────┬───────────┘
          │  Agent response text (streaming → final event)
          ▼
@@ -146,7 +146,7 @@ At 20 turns per session, the Whisper-only configuration costs about $0.01 per se
 ### Tested on
 
 - OS: Ubuntu 24.04 LTS
-- CPU: AMD Ryzen 5 3600
+- CPU: modern multi-core x86_64
 - Node: v24.12.0
 - Discord.js: v14
 
@@ -180,7 +180,7 @@ Edit `voiceops.config.json`:
 |---|---|
 | `voiceChannelId` | Right-click your Discord voice channel → Copy Channel ID |
 | `guildId` | Right-click your Discord server → Copy Server ID |
-| `magisterId` | Your Discord user ID (the operator who will speak to the bot) |
+| `operatorUserId` | Your Discord user ID (the operator who will speak to the bot) |
 | `tts.voice` | kokoro-js voice name (default: `af_bella`) |
 | `tts.speed` | Speech speed multiplier (default: `1.0`) |
 | `vad.silenceDurationMs` | Milliseconds of silence that ends an utterance (default: `800`) |
@@ -225,7 +225,7 @@ On startup, VoiceOps will:
 2. Verify the bot is a member of the target guild
 3. Connect to the OpenClaw Gateway via WebSocket (v3 protocol)
 4. Join the configured voice channel
-5. Begin listening for the Magister's audio
+5. Begin listening for the Operator's audio
 
 ---
 
@@ -233,9 +233,9 @@ On startup, VoiceOps will:
 
 ### Listening
 
-The bot subscribes to the Magister's Discord audio stream. Discord sends compressed Opus audio. VoiceOps decodes it to raw 16kHz PCM (the format Whisper expects).
+The bot subscribes to the Operator's Discord audio stream. Discord sends compressed Opus audio. VoiceOps decodes it to raw 16kHz PCM (the format Whisper expects).
 
-When the Magister stops speaking for 800ms, the audio stream ends. VoiceOps immediately re-subscribes so it is always listening. The collected PCM buffer is then checked against a minimum duration (500ms) and an RMS energy threshold (0.008) to filter out silence and noise. If those checks pass, the buffer goes to Whisper.
+When the Operator stops speaking for 800ms, the audio stream ends. VoiceOps immediately re-subscribes so it is always listening. The collected PCM buffer is then checked against a minimum duration (500ms) and an RMS energy threshold (0.008) to filter out silence and noise. If those checks pass, the buffer goes to Whisper.
 
 ### Transcription
 
@@ -243,7 +243,7 @@ The PCM buffer is wrapped in a WAV header and posted to OpenAI's `whisper-1` end
 
 ### Agent turn
 
-The transcript is sent to the OpenClaw Gateway as a `chat.send` request. The session key `agent:main:voice:magister` routes it to the main agent. The gateway responds asynchronously: a `chat` event with `state: "final"` carries the complete agent response text.
+The transcript is sent to the OpenClaw Gateway as a `chat.send` request. The session key `agent:main:voice:user` routes it to the main agent. The gateway responds asynchronously: a `chat` event with `state: "final"` carries the complete agent response text.
 
 ### Synthesis
 
@@ -294,7 +294,7 @@ Connect handshake:
 
 Send a voice turn:
   Client → { type: "req", id: uuid, method: "chat.send", params: {
-               sessionKey: "agent:main:voice:magister",
+               sessionKey: "agent:main:voice:user",
                message: "transcript text",
                idempotencyKey: uuid
              }}

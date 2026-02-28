@@ -2,7 +2,8 @@
   "_comment": "VoiceOps configuration. Copy to voiceops.config.json and fill in real values.",
   "voiceChannelId": "YOUR_VOICE_CHANNEL_ID",
   "guildId": "YOUR_GUILD_ID",
-  "magisterId": "YOUR_DISCORD_USER_ID",
+  "operatorUserId": "YOUR_DISCORD_USER_ID",
+  "voiceSessionKey": "agent:main:voice:user",
   "tts": {
     "voice": "af_bella",
     "speed": 1.0

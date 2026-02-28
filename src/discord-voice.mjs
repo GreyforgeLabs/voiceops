@@ -3,7 +3,7 @@
  *
  * Handles:
  *   - Joining / leaving voice channels
- *   - Subscribing to Magister's audio stream (with automatic re-subscribe after each utterance)
+ *   - Subscribing to Operator's audio stream (with automatic re-subscribe after each utterance)
  *   - Opus → PCM16 decoding via prism-media
  *   - Playing TTS WAV responses via AudioPlayer
  *   - Reconnect-on-disconnect
@@ -119,7 +119,7 @@ export class DiscordVoiceManager {
     return this._player.state.status !== AudioPlayerStatus.Idle;
   }
 
-  /** Recursively subscribe to Magister's audio stream, re-subscribe on end. */
+  /** Recursively subscribe to Operator's audio stream, re-subscribe on end. */
   _startListening() {
     if (!this._connection) return;
     this._listening = true;
@@ -131,8 +131,8 @@ export class DiscordVoiceManager {
 
     const receiver = this._connection.receiver;
 
-    // Subscribe to Magister only — all other users are dropped at socket level
-    const audioStream = receiver.subscribe(config.magisterId, {
+    // Subscribe to Operator only — all other users are dropped at socket level
+    const audioStream = receiver.subscribe(config.operatorUserId, {
       end: {
         behavior:  EndBehaviorType.AfterSilence,
         duration:  config.vad?.silenceDurationMs ?? 800,
