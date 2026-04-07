@@ -127,6 +127,10 @@ export class GatewayClient {
 
   /** Send a voice-sourced chat message; resolves with the final agent response text. */
   async sendVoiceTurn(text) {
+    if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+      throw new Error('Gateway is not connected');
+    }
+
     const idempotencyKey = randomUUID();
 
     // chat.send returns {runId, status:'started'} immediately.
@@ -159,6 +163,10 @@ export class GatewayClient {
 
   /** Low-level RPC request. */
   _request(method, params = {}) {
+    if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
+      throw new Error('Gateway is not connected');
+    }
+
     return new Promise((resolve, reject) => {
       const id = randomUUID();
       const timer = setTimeout(() => {
@@ -239,5 +247,17 @@ export class GatewayClient {
     this._closed = true;
     this._stopPing();
     this._ws?.close();
+
+    for (const entry of this._chatWait.values()) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error('Gateway connection closing'));
+    }
+    this._chatWait.clear();
+
+    for (const entry of this._pending.values()) {
+      clearTimeout(entry.timer);
+      entry.reject(new Error('Gateway connection closing'));
+    }
+    this._pending.clear();
   }
 }

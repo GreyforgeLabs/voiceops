@@ -24,6 +24,7 @@ import { synthesize }           from './tts.mjs';
 import { config }               from './config.mjs';
 
 const MAX_UTTERANCES_PER_MINUTE = config.pipeline?.utterancesPerMinuteLimit ?? 20;
+const MAX_QUEUE_SIZE = config.pipeline?.maxQueuedUtterances ?? 8;
 const THINKING_CUE_ENABLED      = config.pipeline?.thinkingCueEnabled ?? true;
 const THINKING_CUE_TEXT         = config.pipeline?.thinkingCueText ?? 'One moment...';
 
@@ -63,6 +64,10 @@ export class VoicePipeline {
 
     // Queue while a response is being processed or played
     if (this._processing || this._voice.isPlaying) {
+      if (this._queue.length >= MAX_QUEUE_SIZE) {
+        console.warn('[Pipeline] Queue full — utterance discarded');
+        return;
+      }
       console.log('[Pipeline] Busy — queueing utterance');
       this._queue.push(pcmBuffer);
       return;

@@ -21,6 +21,7 @@
   "pipeline": {
     "maxUtteranceDurationMs": 30000,
     "utterancesPerMinuteLimit": 20,
+    "maxQueuedUtterances": 8,
     "thinkingCueEnabled": true,
     "thinkingCueText": "Let me think about that..."
   }
