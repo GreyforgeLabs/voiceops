@@ -105,7 +105,7 @@ VoiceOps is a standalone process that plugs into the OpenClaw Gateway over WebSo
 | Discord TX buffering | ~200ms |
 | **Total end-to-end** | **3 - 7s** |
 
-The "thinking cue" feature (configurable) plays a short audio phrase ("Let me think about that...") immediately after transcription, masking the agent reasoning latency.
+The "thinking cue" feature (configurable) plays a short audio phrase ("Let me think about that...") immediately after transcription while the gateway request is already in flight, so it masks agent reasoning latency instead of adding to it.
 
 TTS cold start is ~1-2s on first call (82MB ONNX model load). Subsequent calls are < 300ms because the subprocess is respawned with model load amortized per call.
 
@@ -197,6 +197,7 @@ Edit `voiceops.config.json`:
 | `vad.rmsThreshold` | RMS energy floor — clips below this are discarded (default: `0.008`) |
 | `asr.model` | Whisper model name (default: `whisper-1`) |
 | `asr.language` | Language hint for Whisper (default: `en`) |
+| `pipeline.maxUtteranceDurationMs` | Discard utterances longer than this cap to avoid runaway ASR latency (default: `30000`) |
 | `pipeline.utterancesPerMinuteLimit` | Rate cap to control API costs (default: `20`) |
 | `pipeline.thinkingCueEnabled` | Play a short audio cue while the agent is thinking (default: `true`) |
 | `pipeline.thinkingCueText` | Text to synthesize as the thinking cue |
