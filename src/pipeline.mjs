@@ -25,6 +25,7 @@ import { config }               from './config.mjs';
 
 const MAX_UTTERANCES_PER_MINUTE = config.pipeline?.utterancesPerMinuteLimit ?? 20;
 const MAX_QUEUE_SIZE = config.pipeline?.maxQueuedUtterances ?? 8;
+const MAX_UTTERANCE_DURATION_MS = config.pipeline?.maxUtteranceDurationMs ?? 30_000;
 const THINKING_CUE_ENABLED      = config.pipeline?.thinkingCueEnabled ?? true;
 const THINKING_CUE_TEXT         = config.pipeline?.thinkingCueText ?? 'One moment...';
 
@@ -53,6 +54,8 @@ export class VoicePipeline {
 
   /** Called by DiscordVoiceManager when an utterance PCM buffer is ready. */
   async _onUtterance(pcmBuffer) {
+    const utteranceDurationMs = pcmBuffer.length / 2 / 16000 * 1000;
+
     // Rate limit check
     const now = Date.now();
     this._utteranceLog = this._utteranceLog.filter(t => now - t < 60_000);
@@ -61,6 +64,13 @@ export class VoicePipeline {
       return;
     }
     this._utteranceLog.push(now);
+
+    if (utteranceDurationMs > MAX_UTTERANCE_DURATION_MS) {
+      console.warn(
+        `[Pipeline] Overlong utterance discarded (${utteranceDurationMs.toFixed(0)}ms > ${MAX_UTTERANCE_DURATION_MS}ms)`
+      );
+      return;
+    }
 
     // Queue while a response is being processed or played
     if (this._processing || this._voice.isPlaying) {
@@ -88,14 +98,26 @@ export class VoicePipeline {
 
       console.log(`[Pipeline] Utterance: "${transcript}"`);
 
+      // Start the gateway request immediately so the optional cue overlaps
+      // agent reasoning instead of delaying it.
+      const agentTextPromise = this._gateway.sendVoiceTurn(transcript);
+
       // Step 2: Optional "thinking" cue to mask LLM latency
+      let cuePlaybackPromise = null;
       if (THINKING_CUE_ENABLED) {
-        const cueWav = await synthesize(THINKING_CUE_TEXT).catch(() => null);
-        if (cueWav) await this._voice.speak(cueWav);
+        cuePlaybackPromise = synthesize(THINKING_CUE_TEXT)
+          .then((cueWav) => cueWav ? this._voice.speak(cueWav) : null)
+          .catch((err) => {
+            console.warn('[Pipeline] Thinking cue failed:', err.message);
+            return null;
+          });
       }
 
       // Step 3: Send to OpenClaw Gateway and wait for response
-      const agentText = await this._gateway.sendVoiceTurn(transcript);
+      const agentText = await agentTextPromise;
+      if (cuePlaybackPromise) {
+        await cuePlaybackPromise;
+      }
       if (!agentText) {
         console.warn('[Pipeline] No agent response received');
         return;
