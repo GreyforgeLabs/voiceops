@@ -8,6 +8,10 @@
 
 # VoiceOps
 
+<p align="center">
+  <img src="docs/assets/openforge-voiceops.webp" alt="VoiceOps OpenForge project artwork" width="720">
+</p>
+
 **Full-duplex Discord voice pipeline for OpenClaw.**
 Speak into Discord. An AI agent listens, thinks, and speaks back — hands-free, no buttons, no modes.
 
