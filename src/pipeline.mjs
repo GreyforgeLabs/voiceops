@@ -1,22 +1,3 @@
-/**
- * pipeline.mjs — VoiceOps main pipeline orchestrator.
- *
- * Wires together: Discord RX → ASR → Gateway → TTS → Discord TX
- *
- *   1. DiscordVoiceManager calls onUtterance(pcmBuffer) when Operator finishes speaking
- *   2. pipeline transcribes PCM → text (Whisper API)
- *   3. pipeline sends transcript to OpenClaw Gateway as a voice-sourced chat turn
- *   4. Gateway responds; pipeline synthesizes the response text via kokoro-js TTS
- *   5. WAV audio played back through Discord voice channel
- *
- * Rate limiting:  MAX_UTTERANCES_PER_MINUTE cap to prevent runaway API costs.
- * Interrupt model (V1): queue — if a response is currently playing, queue incoming
- *                        utterances rather than interrupting. Reconsider for V2.
- *
- * Built by Greyforge Labs — https://greyforge.tech
- * https://github.com/GreyforgeLabs/voiceops
- */
-
 import { GatewayClient }        from './gateway-client.mjs';
 import { DiscordVoiceManager }  from './discord-voice.mjs';
 import { transcribe }           from './asr.mjs';
@@ -94,7 +75,7 @@ export class VoicePipeline {
         if (cueWav) await this._voice.speak(cueWav);
       }
 
-      // Step 3: Send to OpenClaw Gateway and wait for response
+      // Step 3: Send to the configured gateway and wait for response
       const agentText = await this._gateway.sendVoiceTurn(transcript);
       if (!agentText) {
         console.warn('[Pipeline] No agent response received');

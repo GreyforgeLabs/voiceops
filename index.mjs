@@ -1,19 +1,3 @@
-/**
- * VoiceOps — Discord Voice Integration for OpenClaw
- *
- * Pipeline: Discord RX → Opus decode → silence-gated VAD → Whisper ASR
- *           → OpenClaw Gateway → kokoro-js TTS → Discord TX
- *
- * Run:     node index.mjs
- * Config:  voiceops.config.json  (set voiceChannelId before first run)
- *
- * Standalone process — communicates with the OpenClaw Gateway via WebSocket.
- * Does NOT modify openclaw core. Gateway token auth handles security.
- *
- * Built by Greyforge Labs — https://greyforge.tech
- * https://github.com/GreyforgeLabs/voiceops
- */
-
 import { Client, GatewayIntentBits } from 'discord.js';
 import { VoicePipeline } from './src/pipeline.mjs';
 import { config } from './src/config.mjs';
@@ -63,7 +47,7 @@ client.on('guildDelete', (guild) => {
       .catch(() => {})
       .finally(() => { client.destroy(); process.exit(1); });
   } else {
-    console.warn(`[VoiceOps] Removed from non-target guild ${guild.id} — ignoring.`);
+    console.warn(`[VoiceOps] Removed from non-target guild ${guild.id} - ignoring.`);
   }
 });
 
@@ -76,7 +60,7 @@ client.on('guildUnavailable', (guild) => {
 
 // ── Graceful shutdown ─────────────────────────────────────────────
 async function shutdown(signal) {
-  console.log(`\n[VoiceOps] ${signal} received — shutting down gracefully...`);
+  console.log(`\n[VoiceOps] ${signal} received - shutting down gracefully...`);
   if (pipeline) await pipeline.stop().catch(() => {});
   client.destroy();
   process.exit(0);
@@ -93,11 +77,11 @@ process.on('unhandledRejection', (reason) => {
 
 // ── Start ─────────────────────────────────────────────────────────
 console.log('[VoiceOps] Starting...');
-console.log('[VoiceOps] Built by Greyforge Labs — https://greyforge.tech');
+console.log('[VoiceOps] Built by Greyforge Labs - https://greyforge.tech');
 console.log(`[VoiceOps] Guild:         ${config.guildId}`);
 console.log(`[VoiceOps] Voice channel: ${config.voiceChannelId}`);
 console.log(`[VoiceOps] Operator ID:   ${config.operatorUserId}`);
-console.log(`[VoiceOps] Gateway port:  ${config.gatewayPort}`);
+console.log(`[VoiceOps] Gateway URL:   ${config.gatewayUrl}`);
 console.log(`[VoiceOps] TTS voice:     ${config.tts?.voice}`);
 console.log('');
 

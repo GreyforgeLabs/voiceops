@@ -1,15 +1,4 @@
-/**
- * config.mjs — Load and merge OpenClaw global config + VoiceOps-specific config.
- *
- * Built by Greyforge Labs — https://greyforge.tech
- * https://github.com/GreyforgeLabs/voiceops
- */
-
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
-import { homedir } from 'os';
-
-const HOME = homedir();
 
 function load(path) {
   try {
@@ -20,10 +9,34 @@ function load(path) {
 }
 
 function loadConfig() {
-  const ocJson     = load(resolve(HOME, '.openclaw/openclaw.json'));
-  const voiceJson  = load(new URL('../voiceops.config.json', import.meta.url).pathname);
+  const voiceJson = load(new URL('../voiceops.config.json', import.meta.url).pathname);
 
-  if (voiceJson.voiceChannelId === 'CONFIGURE_ME') {
+  const gatewayPort = voiceJson.gateway?.port ?? 18789;
+  const loadedConfig = {
+    discordToken: process.env.VOICEOPS_DISCORD_TOKEN ?? voiceJson.discord?.token,
+    guildId: voiceJson.guildId,
+    operatorUserId: voiceJson.operatorUserId,
+    voiceChannelId: voiceJson.voiceChannelId,
+
+    gatewayUrl: process.env.VOICEOPS_GATEWAY_URL ?? voiceJson.gateway?.url ?? `ws://127.0.0.1:${gatewayPort}`,
+    gatewayToken: process.env.VOICEOPS_GATEWAY_TOKEN ?? voiceJson.gateway?.token,
+    gatewayScopes: voiceJson.gateway?.scopes ?? ['operator'],
+    voiceSessionKey: voiceJson.gateway?.sessionKey ?? 'agent:main:voice:user',
+
+    openaiApiKey: process.env.OPENAI_API_KEY ?? voiceJson.asr?.openaiApiKey,
+
+    tts: voiceJson.tts,
+    vad: voiceJson.vad,
+    asr: voiceJson.asr,
+    pipeline: voiceJson.pipeline,
+  };
+
+  const missing = [];
+  if (!loadedConfig.discordToken || loadedConfig.discordToken === 'YOUR_DISCORD_BOT_TOKEN') missing.push('discord.token or VOICEOPS_DISCORD_TOKEN');
+  if (!loadedConfig.gatewayToken || loadedConfig.gatewayToken === 'YOUR_GATEWAY_TOKEN') missing.push('gateway.token or VOICEOPS_GATEWAY_TOKEN');
+  if (!loadedConfig.openaiApiKey || loadedConfig.openaiApiKey === 'YOUR_OPENAI_API_KEY') missing.push('asr.openaiApiKey or OPENAI_API_KEY');
+
+  if (voiceJson.voiceChannelId === 'YOUR_VOICE_CHANNEL_ID') {
     throw new Error(
       'voiceops.config.json: voiceChannelId is not set.\n' +
       'Right-click your Discord voice channel → Copy Channel ID and paste it in voiceops.config.json.'
@@ -35,34 +48,11 @@ function loadConfig() {
       'Set it to your Discord user ID (Enable Developer Mode → right-click your username → Copy User ID).'
     );
   }
+  if (missing.length > 0) {
+    throw new Error(`voiceops.config.json: missing required secret config: ${missing.join(', ')}`);
+  }
 
-  return {
-    // Discord
-    discordToken:   ocJson.channels?.discord?.token,
-    guildId:        voiceJson.guildId,
-    operatorUserId: voiceJson.operatorUserId,
-    voiceChannelId: voiceJson.voiceChannelId,
-
-    // OpenClaw Gateway
-    gatewayPort:       ocJson.gateway?.port  ?? 18789,
-    gatewayToken:      ocJson.gateway?.auth?.token,
-    voiceSessionKey:   voiceJson.voiceSessionKey ?? 'agent:main:voice:user',
-
-    // OpenAI (Whisper ASR)
-    openaiApiKey:   ocJson.env?.OPENAI_API_KEY,
-
-    // TTS
-    tts: voiceJson.tts,
-
-    // VAD
-    vad: voiceJson.vad,
-
-    // ASR
-    asr: voiceJson.asr,
-
-    // Pipeline
-    pipeline: voiceJson.pipeline,
-  };
+  return loadedConfig;
 }
 
 export const config = loadConfig();

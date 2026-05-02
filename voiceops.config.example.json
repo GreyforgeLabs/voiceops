@@ -1,10 +1,18 @@
 {
   "_comment": "VoiceOps configuration. Copy to voiceops.config.json and fill in real values.",
-  "_source": "https://github.com/GreyforgeLabs/voiceops — Built by Greyforge Labs (https://greyforge.tech)",
+  "_source": "https://github.com/GreyforgeLabs/voiceops - Built by Greyforge Labs (https://greyforge.tech)",
+  "discord": {
+    "token": "YOUR_DISCORD_BOT_TOKEN"
+  },
   "voiceChannelId": "YOUR_VOICE_CHANNEL_ID",
   "guildId": "YOUR_GUILD_ID",
   "operatorUserId": "YOUR_DISCORD_USER_ID",
-  "voiceSessionKey": "agent:main:voice:user",
+  "gateway": {
+    "url": "ws://127.0.0.1:18789",
+    "token": "YOUR_GATEWAY_TOKEN",
+    "sessionKey": "agent:main:voice:user",
+    "scopes": ["operator"]
+  },
   "tts": {
     "voice": "af_bella",
     "speed": 1.0
@@ -15,6 +23,7 @@
     "rmsThreshold": 0.008
   },
   "asr": {
+    "openaiApiKey": "YOUR_OPENAI_API_KEY",
     "model": "whisper-1",
     "language": "en"
   },

@@ -64,6 +64,11 @@ function buildWav(pcmData) {
  * @returns {Promise<string|null>}  Transcript text, or null if too quiet / rejected
  */
 export async function transcribe(pcmBuffer) {
+  if (!config.openaiApiKey) {
+    console.error('[ASR] Missing transcription key. Set OPENAI_API_KEY or asr.openaiApiKey.');
+    return null;
+  }
+
   const rmsThreshold = config.vad?.rmsThreshold ?? 0.008;
   const minDurationMs = config.vad?.minUtteranceDurationMs ?? 500;
 

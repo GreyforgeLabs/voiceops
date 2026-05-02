@@ -1,19 +1,3 @@
-/**
- * gateway-client.mjs — OpenClaw Gateway WebSocket client.
- *
- * Protocol v3:
- *   connect: { minProtocol, maxProtocol, client: { id, version, platform, mode } }
- *   request: { type:'req', id, method, params }
- *   response: { type:'res', id, ok, payload }
- *   event:    { type:'event', event, payload }
- *
- * Sends transcribed voice turns as chat.send with metadata { source: 'voice' }.
- * Listens for chat events (delta / final) and routes agent responses to a callback.
- *
- * Built by Greyforge Labs — https://greyforge.tech
- * https://github.com/GreyforgeLabs/voiceops
- */
-
 import WebSocket from 'ws';
 import { randomUUID } from 'crypto';
 import { config } from './config.mjs';
@@ -22,9 +6,9 @@ const RECONNECT_DELAY_MS   = 3000;
 const PING_INTERVAL_MS     = 30_000;
 const REQUEST_TIMEOUT_MS   = 60_000;
 
-// Strip agent signature line appended by the AI agent (e.g. "\n\n— AgentName · Model")
+// Strip an optional signature line appended by an upstream agent.
 function stripSignature(text) {
-  return (text ?? '').replace(/\n\n—[^\n]*$/, '').trim();
+  return (text ?? '').replace(/\n\n[-\u2013\u2014][^\n]*$/, '').trim();
 }
 
 export class GatewayClient {
@@ -41,16 +25,24 @@ export class GatewayClient {
 
   /** Connect and authenticate. Resolves once connected + authenticated. */
   async connect() {
-    const url = `ws://127.0.0.1:${config.gatewayPort}`;
+    const url = config.gatewayUrl;
     console.log(`[GW] Connecting to ${url}...`);
 
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(url);
       this._ws = ws;
       let connectId = null;
+      let settled = false;
+
+      const finishConnect = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        fn(value);
+      };
 
       // v3 protocol: wait for connect.challenge, THEN send the connect req
       const sendConnect = () => {
+        if (connectId) return;
         connectId = randomUUID();
         ws.send(JSON.stringify({
           type:   'req',
@@ -65,7 +57,7 @@ export class GatewayClient {
               platform: 'linux',
               mode:     'cli',
             },
-            scopes: ['operator.admin'],
+            scopes: config.gatewayScopes,
             auth: { token: config.gatewayToken },
           },
         }));
@@ -87,9 +79,9 @@ export class GatewayClient {
             this._sessionId = msg.payload?.server?.connId ?? msg.payload?.sessionId ?? 'unknown';
             console.log('[GW] Connected. connId:', this._sessionId);
             this._startPing();
-            resolve();
+            finishConnect(resolve);
           } else {
-            reject(new Error(`Gateway connect failed: ${msg.error?.message ?? JSON.stringify(msg)}`));
+            finishConnect(reject, new Error(`Gateway connect failed: ${msg.error?.message ?? JSON.stringify(msg)}`));
           }
           return;
         }
@@ -100,13 +92,13 @@ export class GatewayClient {
             this._sessionId = msg.payload?.sessionId ?? 'unknown';
             console.log('[GW] Connected (ready event). Session:', this._sessionId);
             this._startPing();
-            resolve();
+            finishConnect(resolve);
           }
           return;
         }
 
         if (msg.type === 'event' && msg.event === 'connect.error') {
-          reject(new Error(`Gateway connect error: ${msg.payload?.message ?? 'unknown'}`));
+          finishConnect(reject, new Error(`Gateway connect error: ${msg.payload?.message ?? 'unknown'}`));
           return;
         }
 
@@ -114,13 +106,19 @@ export class GatewayClient {
       });
 
       ws.once('error', (err) => {
-        if (!this._sessionId) reject(err);
-        else this._scheduleReconnect();
+        if (!this._sessionId) finishConnect(reject, err);
+        else {
+          this._rejectInflight(new Error(`Gateway connection error: ${err.message}`));
+          this._scheduleReconnect();
+        }
       });
 
       ws.once('close', () => {
         this._stopPing();
-        if (!this._closed) this._scheduleReconnect();
+        if (!this._closed) {
+          this._rejectInflight(new Error('Gateway connection lost'));
+          this._scheduleReconnect();
+        }
       });
     });
   }
@@ -232,6 +230,22 @@ export class GatewayClient {
     clearTimeout(entry.timer);
   }
 
+  _rejectInflight(error) {
+    const chatEntries = new Set(this._chatWait.values());
+    this._chatWait.clear();
+    for (const entry of chatEntries) {
+      clearTimeout(entry.timer);
+      entry.reject(error);
+    }
+
+    const pendingEntries = new Set(this._pending.values());
+    this._pending.clear();
+    for (const entry of pendingEntries) {
+      clearTimeout(entry.timer);
+      entry.reject(error);
+    }
+  }
+
   _startPing() {
     this._pingTimer = setInterval(() => {
       if (this._ws?.readyState === WebSocket.OPEN) {
@@ -259,17 +273,6 @@ export class GatewayClient {
     this._closed = true;
     this._stopPing();
     this._ws?.close();
-
-    for (const entry of this._chatWait.values()) {
-      clearTimeout(entry.timer);
-      entry.reject(new Error('Gateway connection closing'));
-    }
-    this._chatWait.clear();
-
-    for (const entry of this._pending.values()) {
-      clearTimeout(entry.timer);
-      entry.reject(new Error('Gateway connection closing'));
-    }
-    this._pending.clear();
+    this._rejectInflight(new Error('Gateway connection closing'));
   }
 }
