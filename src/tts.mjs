@@ -27,6 +27,16 @@ const WORKER_PATH = resolve(__dirname, 'tts-worker.mjs');
 
 // Per-call timeout: ~5s for cold start + synthesis; 3s warm
 const TTS_TIMEOUT_MS = 30_000;
+const ALLOWED_TTS_EXIT_CODES = new Set([0, 7]);
+
+export function isWaveBuffer(buffer) {
+  return (
+    Buffer.isBuffer(buffer) &&
+    buffer.length >= 44 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WAVE'
+  );
+}
 
 /**
  * Synthesize text into a WAV buffer.
@@ -71,9 +81,12 @@ export async function synthesize(text) {
       if (timedOut) return;
 
       const wav = Buffer.concat(wavChunks);
-      if (wav.length < 44) {
-        // WAV header alone is 44 bytes; anything less means no audio
-        reject(new Error(`TTS worker exited ${code ?? signal} with no WAV output`));
+      if (signal || !ALLOWED_TTS_EXIT_CODES.has(code)) {
+        reject(new Error(`TTS worker exited ${signal ?? code}`));
+        return;
+      }
+      if (!isWaveBuffer(wav)) {
+        reject(new Error('TTS worker did not return a valid WAV buffer'));
         return;
       }
       // Success — worker may exit with code 7 due to Emscripten WASM cleanup

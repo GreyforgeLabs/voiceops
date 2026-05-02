@@ -32,7 +32,7 @@ export class GatewayClient {
     this._onAgentResponse = onAgentResponse ?? (() => {});
     this._ws       = null;
     this._pending  = new Map(); // reqId → { resolve, reject, timer }
-    this._chatWait = new Map(); // runId → { resolve, reject, timer }
+    this._chatWait = new Map(); // runId/idempotencyKey -> wait entry
     this._pingTimer    = null;
     this._reconnecting = false;
     this._sessionId    = null;
@@ -135,12 +135,14 @@ export class GatewayClient {
 
     // chat.send returns {runId, status:'started'} immediately.
     // The actual agent text arrives via 'chat' events with state='final'.
+    let entry;
     const chatPromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this._chatWait.delete(idempotencyKey);
+        this._clearChatWait(entry);
         reject(new Error('Agent response timed out'));
       }, REQUEST_TIMEOUT_MS);
-      this._chatWait.set(idempotencyKey, { resolve, reject, timer });
+      entry = { resolve, reject, timer, keys: new Set([idempotencyKey]) };
+      this._chatWait.set(idempotencyKey, entry);
     });
 
     // Fire the request (don't await — just need it to be accepted)
@@ -148,12 +150,17 @@ export class GatewayClient {
       sessionKey:     config.voiceSessionKey,
       message:        text,
       idempotencyKey,
+    }).then((payload) => {
+      const runId = payload?.runId ?? payload?.id;
+      if (runId && entry) {
+        entry.keys.add(runId);
+        this._chatWait.set(runId, entry);
+      }
     }).catch((err) => {
       // If the req itself fails, reject the chat promise too
       const entry = this._chatWait.get(idempotencyKey);
       if (entry) {
-        this._chatWait.delete(idempotencyKey);
-        clearTimeout(entry.timer);
+        this._clearChatWait(entry);
         entry.reject(err);
       }
     });
@@ -192,17 +199,15 @@ export class GatewayClient {
 
     // Route chat events to pending sendVoiceTurn promises
     if (msg.type === 'event' && msg.event === 'chat') {
-      const { state, runId, message } = msg.payload ?? {};
+      const { state, runId, idempotencyKey, message } = msg.payload ?? {};
       // Extract text from content array (v3 format)
       const rawText = message?.content?.find(c => c.type === 'text')?.text ?? '';
       const text    = stripSignature(rawText);
 
       if (state === 'final') {
-        // Resolve a waiting sendVoiceTurn (runId matches idempotencyKey)
-        const entry = this._chatWait.get(runId);
+        const entry = this._chatWait.get(runId) ?? this._chatWait.get(idempotencyKey);
         if (entry) {
-          this._chatWait.delete(runId);
-          clearTimeout(entry.timer);
+          this._clearChatWait(entry);
           console.log(`[GW] Agent response: "${text.slice(0, 80)}"`);
           entry.resolve(text || null);
         } else {
@@ -210,14 +215,21 @@ export class GatewayClient {
           if (text) this._onAgentResponse(text);
         }
       } else if (state === 'error') {
-        const entry = this._chatWait.get(runId);
+        const entry = this._chatWait.get(runId) ?? this._chatWait.get(idempotencyKey);
         if (entry) {
-          this._chatWait.delete(runId);
-          clearTimeout(entry.timer);
+          this._clearChatWait(entry);
           entry.reject(new Error('Agent error: ' + (rawText || 'unknown')));
         }
       }
     }
+  }
+
+  _clearChatWait(entry) {
+    if (!entry) return;
+    for (const key of entry.keys ?? []) {
+      this._chatWait.delete(key);
+    }
+    clearTimeout(entry.timer);
   }
 
   _startPing() {
