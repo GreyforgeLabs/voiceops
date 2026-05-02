@@ -1,5 +1,37 @@
-node_modules/
+# Environment and secrets
 voiceops.config.json
-*.log
 .env
-.env.local
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials/
+secrets/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
