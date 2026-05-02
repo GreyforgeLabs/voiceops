@@ -1,0 +1,150 @@
+{
+  "checks": [
+    {
+      "details": "node",
+      "id": "project-type",
+      "label": "Project type",
+      "name": "Project type",
+      "ok": true,
+      "severity": "info",
+      "status": "pass"
+    },
+    {
+      "details": "index.mjs, src/gateway-client.mjs, src/config.mjs, src/discord-voice.mjs, src/tts.mjs",
+      "id": "node-source",
+      "label": "Node source",
+      "name": "Node source",
+      "ok": true,
+      "severity": "info",
+      "status": "pass"
+    },
+    {
+      "details": "package.json found",
+      "id": "node-package",
+      "label": "Node package",
+      "name": "Node package",
+      "ok": true,
+      "severity": "info",
+      "status": "pass"
+    },
+    {
+      "details": "package.json test script found",
+      "id": "node-tests",
+      "label": "Node tests",
+      "name": "Node tests",
+      "ok": true,
+      "severity": "info",
+      "status": "pass"
+    },
+    {
+      "details": "STARTHERE.md: missing; CHANGELOG.md: missing; scripts/setup.sh: missing",
+      "id": "template-placeholders-removed",
+      "label": "Template placeholders removed",
+      "name": "Template placeholders removed",
+      "ok": false,
+      "severity": "error",
+      "status": "fail"
+    }
+  ],
+  "generated_at": "2026-05-02T02:04:39+00:00",
+  "git": {
+    "branch": "main",
+    "dirty": false,
+    "is_repo": true,
+    "remote_configured": true,
+    "status_count": 0
+  },
+  "manifests": {
+    "package.json": {
+      "has_test_script": true,
+      "license": "MIT",
+      "name": "voiceops",
+      "version": "0.1.0"
+    }
+  },
+  "mutation_readiness": {
+    "github": {
+      "ready": false,
+      "requires_operator_gate": true
+    },
+    "webforge_deploy": {
+      "ready": false,
+      "requires_operator_gate": true
+    },
+    "webforge_stage": {
+      "ready": false,
+      "requires_operator_gate": true
+    }
+  },
+  "project": {
+    "languages": [
+      "node"
+    ],
+    "name": "voiceops",
+    "scaffolded": true,
+    "spec_exists": false,
+    "subtitle": "workspace repo not listed in OpenForge ideas",
+    "tier": "workspace",
+    "workspace_repo": true
+  },
+  "readiness": {
+    "failed_checks": 1,
+    "missing_release_files": 7,
+    "ready": false,
+    "scrub_findings": 6
+  },
+  "release_files": {
+    "missing": [
+      "STARTHERE.md",
+      "CONTRIBUTING.md",
+      "CODE_OF_CONDUCT.md",
+      "SECURITY.md",
+      "CHANGELOG.md",
+      ".editorconfig",
+      ".gitattributes"
+    ],
+    "ok": false,
+    "present": [
+      "README.md",
+      "LICENSE",
+      ".gitignore"
+    ]
+  },
+  "schema": "openforge.audit.v1",
+  "scrub": {
+    "finding_count": 6,
+    "findings": [
+      {
+        "file": "package.json",
+        "pattern": "internal_platform_reference",
+        "type": "privacy"
+      },
+      {
+        "file": "README.md",
+        "pattern": "internal_platform_reference",
+        "type": "privacy"
+      },
+      {
+        "file": "index.mjs",
+        "pattern": "internal_platform_reference",
+        "type": "privacy"
+      },
+      {
+        "file": "src/gateway-client.mjs",
+        "pattern": "internal_platform_reference",
+        "type": "privacy"
+      },
+      {
+        "file": "src/config.mjs",
+        "pattern": "internal_platform_reference",
+        "type": "privacy"
+      },
+      {
+        "file": "src/pipeline.mjs",
+        "pattern": "internal_platform_reference",
+        "type": "privacy"
+      }
+    ],
+    "ok": false
+  }
+}
