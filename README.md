@@ -30,7 +30,8 @@ Discord voice -> Opus decode -> silence gate -> transcription -> agent gateway -
 - Configurable silence gate and RMS floor to suppress empty clips.
 - Gateway client with request correlation by idempotency key and run ID.
 - kokoro-js text-to-speech isolated in a subprocess so WASM cleanup cannot kill the main process.
-- Queue and per-minute rate cap to avoid runaway transcription usage.
+- Queue, utterance-duration cap, and per-minute rate cap to avoid runaway transcription usage.
+- Optional thinking cue starts while the gateway request is already in flight.
 - Plain JSON config, no required database.
 
 ## Requirements
@@ -78,6 +79,13 @@ npm start
     "openaiApiKey": "YOUR_OPENAI_API_KEY",
     "model": "whisper-1",
     "language": "en"
+  },
+  "pipeline": {
+    "maxUtteranceDurationMs": 30000,
+    "utterancesPerMinuteLimit": 20,
+    "maxQueuedUtterances": 8,
+    "thinkingCueEnabled": true,
+    "thinkingCueText": "One moment..."
   }
 }
 ```
@@ -105,6 +113,8 @@ Server -> { type: "event", event: "chat", payload: { state: "final", runId, mess
 ```
 
 Final responses are matched by `runId` first and `idempotencyKey` second. Unmatched push events are routed to the optional response callback.
+
+The optional thinking cue plays after transcription while the gateway request is already running. That masks gateway latency without delaying the actual response path.
 
 ## Project Structure
 
