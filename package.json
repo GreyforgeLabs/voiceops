@@ -21,7 +21,8 @@
   "scripts": {
     "start": "node index.mjs",
     "dev": "node --watch index.mjs",
-    "test": "find . -name '*.mjs' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check"
+    "test": "npm run test:syntax && node --test",
+    "test:syntax": "find . -name '*.mjs' -not -path './node_modules/*' -print0 | xargs -0 -n1 node --check"
   },
   "dependencies": {
     "@discordjs/voice": "0.19.2",

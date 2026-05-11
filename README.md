@@ -34,7 +34,8 @@ Discord voice -> Opus decode -> silence gate -> transcription -> agent gateway -
 - Configurable silence gate and RMS floor to suppress empty clips.
 - Gateway client with request correlation by idempotency key and run ID.
 - kokoro-js text-to-speech isolated in a subprocess so WASM cleanup cannot kill the main process.
-- Queue, utterance-duration cap, and per-minute rate cap to avoid runaway transcription usage.
+- Queue, utterance-duration cap, streaming PCM cap, and per-minute rate cap to avoid runaway transcription usage.
+- Gateway, ASR, and TTS timeout/size limits with redacted transcript and response logs by default.
 - Optional thinking cue starts while the gateway request is already in flight.
 - Plain JSON config, no required database.
 
@@ -77,12 +78,25 @@ npm start
     "url": "ws://127.0.0.1:18789",
     "token": "YOUR_GATEWAY_TOKEN",
     "sessionKey": "agent:main:voice:user",
-    "scopes": ["operator"]
+    "scopes": ["operator"],
+    "requestTimeoutMs": 60000,
+    "connectTimeoutMs": 15000,
+    "maxMessageBytes": 262144,
+    "allowInsecureRemote": false
+  },
+  "tts": {
+    "voice": "af_bella",
+    "speed": 1.0,
+    "timeoutMs": 30000,
+    "maxInputChars": 2000,
+    "maxOutputBytes": 12582912,
+    "modelId": "onnx-community/Kokoro-82M-v1.0-ONNX"
   },
   "asr": {
     "openaiApiKey": "YOUR_OPENAI_API_KEY",
     "model": "whisper-1",
-    "language": "en"
+    "language": "en",
+    "timeoutMs": 30000
   },
   "pipeline": {
     "maxUtteranceDurationMs": 30000,
@@ -90,6 +104,10 @@ npm start
     "maxQueuedUtterances": 8,
     "thinkingCueEnabled": true,
     "thinkingCueText": "One moment..."
+  },
+  "privacy": {
+    "logTranscripts": false,
+    "logAgentResponses": false
   }
 }
 ```
@@ -98,9 +116,11 @@ The following environment variables override file values when present:
 
 | Variable | Purpose |
 |---|---|
+| `VOICEOPS_CONFIG_PATH` | Alternate config file path for tests or managed runtimes |
 | `VOICEOPS_DISCORD_TOKEN` | Discord bot token |
 | `VOICEOPS_GATEWAY_URL` | Gateway WebSocket URL |
 | `VOICEOPS_GATEWAY_TOKEN` | Gateway bearer token |
+| `VOICEOPS_ALLOW_INSECURE_REMOTE_GATEWAY` | Allow non-loopback `ws://` gateway URLs when set to `true` |
 | `OPENAI_API_KEY` | Transcription key |
 
 ## Gateway Protocol
@@ -149,7 +169,11 @@ The test command syntax-checks all `.mjs` files. Runtime verification requires D
 
 - `voiceops.config.json` is ignored by git and should contain local secrets only.
 - The bot subscribes only to the configured `operatorUserId`.
-- The gateway token is sent only to the configured WebSocket URL.
+- Remote gateway URLs must use `wss://` by default. Plain `ws://` is accepted only for loopback unless explicitly allowed for a trusted private network.
+- Gateway messages, agent TTS input, TTS WAV output, and active PCM buffers are size-capped before expensive processing.
+- The ASR request, gateway request, gateway connection, and TTS subprocess all have bounded timeouts.
+- The TTS worker receives a sanitized environment instead of inheriting Discord, gateway, or OpenAI credentials.
+- Transcript and agent-response body logging is disabled by default. Set `privacy.logTranscripts` or `privacy.logAgentResponses` only on a trusted host/log sink.
 - Keep the Discord bot scoped to the specific server and channel you intend to use.
 
 ## License

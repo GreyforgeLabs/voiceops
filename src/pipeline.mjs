@@ -4,11 +4,12 @@ import { transcribe }           from './asr.mjs';
 import { synthesize }           from './tts.mjs';
 import { config }               from './config.mjs';
 
-const MAX_UTTERANCES_PER_MINUTE = config.pipeline?.utterancesPerMinuteLimit ?? 20;
-const MAX_QUEUE_SIZE = config.pipeline?.maxQueuedUtterances ?? 8;
-const MAX_UTTERANCE_DURATION_MS = config.pipeline?.maxUtteranceDurationMs ?? 30_000;
-const THINKING_CUE_ENABLED      = config.pipeline?.thinkingCueEnabled ?? true;
-const THINKING_CUE_TEXT         = config.pipeline?.thinkingCueText ?? 'One moment...';
+const MAX_UTTERANCES_PER_MINUTE = config.pipeline.utterancesPerMinuteLimit;
+const MAX_QUEUE_SIZE            = config.pipeline.maxQueuedUtterances;
+const MAX_UTTERANCE_DURATION_MS = config.pipeline.maxUtteranceDurationMs;
+const MAX_AGENT_TEXT_CHARS      = config.tts.maxInputChars;
+const THINKING_CUE_ENABLED      = config.pipeline.thinkingCueEnabled;
+const THINKING_CUE_TEXT         = config.pipeline.thinkingCueText;
 
 export class VoicePipeline {
   constructor(discordClient) {
@@ -78,7 +79,11 @@ export class VoicePipeline {
         return;
       }
 
-      console.log(`[Pipeline] Utterance: "${transcript}"`);
+      if (config.privacy.logTranscripts) {
+        console.log(`[Pipeline] Utterance: "${transcript}"`);
+      } else {
+        console.log(`[Pipeline] Utterance accepted (${transcript.length} chars)`);
+      }
 
       // Start the gateway request immediately so the optional cue overlaps
       // gateway processing instead of delaying it.
@@ -104,9 +109,19 @@ export class VoicePipeline {
         console.warn('[Pipeline] No agent response received');
         return;
       }
+      if (agentText.length > MAX_AGENT_TEXT_CHARS) {
+        console.warn(
+          `[Pipeline] Agent response discarded (${agentText.length} chars > ${MAX_AGENT_TEXT_CHARS} chars)`
+        );
+        return;
+      }
 
       // Step 4: TTS synthesis (kokoro-js)
-      console.log(`[Pipeline] Synthesizing: "${agentText.slice(0, 80)}..."`);
+      if (config.privacy.logAgentResponses) {
+        console.log(`[Pipeline] Synthesizing: "${agentText.slice(0, 80)}..."`);
+      } else {
+        console.log(`[Pipeline] Synthesizing agent response (${agentText.length} chars)`);
+      }
       const wavBuffer = await synthesize(agentText);
       if (!wavBuffer) {
         console.warn('[Pipeline] TTS returned null');

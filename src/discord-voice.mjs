@@ -31,14 +31,19 @@ import { Readable } from 'stream';
 import { config } from './config.mjs';
 
 // Discord sends Opus at 48kHz — decode to 16kHz 16-bit mono for Whisper compatibility
+const PCM_SAMPLE_RATE = 16000;
+const PCM_BYTES_PER_SAMPLE = 2;
 const OPUS_DECODE_OPTS = {
-  rate:      16000,
+  rate:      PCM_SAMPLE_RATE,
   channels:  1,
   frameSize: 960,   // 60ms at 16kHz
 };
 
 // Minimum utterance buffer size to avoid re-subscribing before data arrives
-const MIN_PCM_BYTES = (16000 * 2 * (config.vad?.minUtteranceDurationMs ?? 500)) / 1000;
+const MIN_PCM_BYTES = (PCM_SAMPLE_RATE * PCM_BYTES_PER_SAMPLE * config.vad.minUtteranceDurationMs) / 1000;
+const MAX_PCM_BYTES = Math.ceil(
+  (PCM_SAMPLE_RATE * PCM_BYTES_PER_SAMPLE * config.pipeline.maxUtteranceDurationMs) / 1000
+);
 
 export class DiscordVoiceManager {
   constructor({ client, onUtterance }) {
@@ -145,12 +150,38 @@ export class DiscordVoiceManager {
     // Decode Opus → PCM16 mono 16kHz
     const decoder = new prism.opus.Decoder(OPUS_DECODE_OPTS);
     const pcmChunks = [];
+    let pcmBytes = 0;
+    let overLimit = false;
+    let resubscribed = false;
 
-    decoder.on('data', (chunk) => pcmChunks.push(chunk));
+    const resubscribe = () => {
+      if (resubscribed) return;
+      resubscribed = true;
+      setImmediate(() => this._subscribeOnce());
+    };
+
+    decoder.on('data', (chunk) => {
+      if (overLimit) return;
+      pcmBytes += chunk.length;
+      if (pcmBytes > MAX_PCM_BYTES) {
+        overLimit = true;
+        pcmChunks.length = 0;
+        console.warn(
+          `[VC] Utterance buffer cap exceeded (${pcmBytes} bytes > ${MAX_PCM_BYTES} bytes). Discarding active stream.`
+        );
+        audioStream.destroy();
+        decoder.destroy();
+        resubscribe();
+        return;
+      }
+      pcmChunks.push(chunk);
+    });
 
     decoder.on('end', () => {
       // Re-subscribe immediately so we're always listening
-      setImmediate(() => this._subscribeOnce());
+      resubscribe();
+
+      if (overLimit) return;
 
       const pcmBuffer = Buffer.concat(pcmChunks);
       if (pcmBuffer.length < MIN_PCM_BYTES) return; // too short to process
@@ -163,7 +194,16 @@ export class DiscordVoiceManager {
 
     decoder.on('error', (err) => {
       console.error('[VC] Decoder error:', err.message);
-      setImmediate(() => this._subscribeOnce());
+      resubscribe();
+    });
+
+    decoder.on('close', () => {
+      if (overLimit) resubscribe();
+    });
+
+    audioStream.on('error', (err) => {
+      console.error('[VC] Audio stream error:', err.message);
+      resubscribe();
     });
 
     audioStream.pipe(decoder);

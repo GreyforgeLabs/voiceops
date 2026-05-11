@@ -22,14 +22,23 @@
 
 import { KokoroTTS } from 'kokoro-js';
 
-const MODEL_ID   = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 const SAMPLE_RATE = 24000;
 const voice = process.argv[2] ?? 'af_bella';
 const speed = parseFloat(process.argv[3] ?? '1.0');
+const modelId = process.argv[4] ?? 'onnx-community/Kokoro-82M-v1.0-ONNX';
+const maxInputBytes = Number.parseInt(process.argv[5] ?? '8000', 10);
 
 // Read all text from stdin
 const chunks = [];
-for await (const chunk of process.stdin) chunks.push(chunk);
+let inputBytes = 0;
+for await (const chunk of process.stdin) {
+  inputBytes += chunk.length;
+  if (!Number.isFinite(maxInputBytes) || inputBytes > maxInputBytes) {
+    process.stderr.write(`[TTS-worker] Input exceeds ${maxInputBytes} bytes\n`);
+    process.exit(1);
+  }
+  chunks.push(chunk);
+}
 const text = Buffer.concat(chunks).toString('utf8').trim();
 
 if (!text) {
@@ -39,7 +48,7 @@ if (!text) {
 
 let engine;
 try {
-  engine = await KokoroTTS.from_pretrained(MODEL_ID, { dtype: 'fp32' });
+  engine = await KokoroTTS.from_pretrained(modelId, { dtype: 'fp32' });
 } catch (e) {
   process.stderr.write(`[TTS-worker] Model load failed: ${e.message}\n`);
   process.exit(1);

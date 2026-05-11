@@ -25,9 +25,28 @@ import { config } from './config.mjs';
 const __dirname  = fileURLToPath(new URL('.', import.meta.url));
 const WORKER_PATH = resolve(__dirname, 'tts-worker.mjs');
 
-// Per-call timeout: ~5s for cold start + synthesis; 3s warm
-const TTS_TIMEOUT_MS = 30_000;
 const ALLOWED_TTS_EXIT_CODES = new Set([0, 7]);
+const WORKER_ENV_ALLOWLIST = [
+  'HOME',
+  'XDG_CACHE_HOME',
+  'HF_HOME',
+  'TRANSFORMERS_CACHE',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'NO_COLOR',
+  'FORCE_COLOR',
+];
+const STDERR_LOG_BYTES = 64 * 1024;
+
+function sanitizedWorkerEnv() {
+  const env = {};
+  for (const key of WORKER_ENV_ALLOWLIST) {
+    if (process.env[key]) env[key] = process.env[key];
+  }
+  env.HF_HUB_DISABLE_TELEMETRY = '1';
+  return env;
+}
 
 export function isWaveBuffer(buffer) {
   return (
@@ -48,37 +67,75 @@ export function isWaveBuffer(buffer) {
  * @returns {Promise<Buffer|null>}  WAV buffer (24kHz mono 16-bit), or null on failure
  */
 export async function synthesize(text) {
-  const voice = config.tts?.voice ?? 'af_bella';
-  const speed = String(config.tts?.speed ?? 1.0);
+  const normalizedText = String(text ?? '').trim();
+  const voice = config.tts.voice;
+  const speed = String(config.tts.speed);
+  const modelId = config.tts.modelId;
+  const timeoutMs = config.tts.timeoutMs;
+  const maxInputChars = config.tts.maxInputChars;
+  const maxOutputBytes = config.tts.maxOutputBytes;
+  const maxInputBytes = maxInputChars * 4;
+
+  if (!normalizedText) return null;
+  if (normalizedText.length > maxInputChars) {
+    throw new Error(`TTS input exceeded ${maxInputChars} characters`);
+  }
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(process.execPath, [WORKER_PATH, voice, speed], {
+    const proc = spawn(process.execPath, [WORKER_PATH, voice, speed, modelId, String(maxInputBytes)], {
+      env: sanitizedWorkerEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     });
 
     const wavChunks = [];
+    let wavBytes = 0;
+    let stderrBytes = 0;
     let timedOut = false;
+    let settled = false;
+
+    const fail = (err, kill = true) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (kill && proc.exitCode == null) proc.kill('SIGKILL');
+      reject(err);
+    };
 
     const timeout = setTimeout(() => {
       timedOut = true;
-      proc.kill('SIGKILL');
-      reject(new Error(`TTS worker timed out after ${TTS_TIMEOUT_MS}ms`));
-    }, TTS_TIMEOUT_MS);
+      fail(new Error(`TTS worker timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
 
-    proc.stdout.on('data', (chunk) => wavChunks.push(chunk));
+    proc.stdout.on('data', (chunk) => {
+      if (settled) return;
+      wavBytes += chunk.length;
+      if (wavBytes > maxOutputBytes) {
+        fail(new Error(`TTS worker output exceeded ${maxOutputBytes} bytes`));
+        return;
+      }
+      wavChunks.push(chunk);
+    });
     proc.stderr.on('data', (d) => {
-      const msg = d.toString().trim();
+      const remaining = STDERR_LOG_BYTES - stderrBytes;
+      if (remaining <= 0) return;
+      const slice = d.subarray(0, remaining);
+      stderrBytes += slice.length;
+      const msg = slice.toString().trim();
       if (msg) console.log(`[TTS]`, msg);
+    });
+    proc.stdin.on('error', () => {
+      // The worker may be killed after a timeout or size cap while stdin is still draining.
     });
 
     proc.on('error', (err) => {
-      clearTimeout(timeout);
-      reject(new Error(`TTS worker spawn failed: ${err.message}`));
+      fail(new Error(`TTS worker spawn failed: ${err.message}`), false);
     });
 
     proc.on('close', (code, signal) => {
+      if (settled || timedOut) return;
+      settled = true;
       clearTimeout(timeout);
-      if (timedOut) return;
 
       const wav = Buffer.concat(wavChunks);
       if (signal || !ALLOWED_TTS_EXIT_CODES.has(code)) {
@@ -94,7 +151,7 @@ export async function synthesize(text) {
     });
 
     // Write text to worker stdin
-    proc.stdin.write(text, 'utf8');
+    proc.stdin.write(normalizedText, 'utf8');
     proc.stdin.end();
   });
 }

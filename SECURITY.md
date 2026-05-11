@@ -34,6 +34,12 @@ Instead, use one of these methods:
 
 We follow coordinated disclosure. Please allow us reasonable time to address the issue before making it public.
 
+## Runtime Boundary
+
+VoiceOps is a single-operator Discord voice bridge. It has no inbound HTTP server, browser session, database, or public upload surface. The main runtime inputs are Discord voice packets and gateway WebSocket messages.
+
+Use `wss://` for any non-local gateway. Plain `ws://` is accepted by default only for loopback. Transcripts and agent responses are redacted in logs unless explicitly enabled in local config.
+
 ---
 
 Built by [Greyforge](https://greyforge.tech)

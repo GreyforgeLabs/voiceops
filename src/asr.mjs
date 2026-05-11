@@ -23,6 +23,7 @@ const BIT_DEPTH   = 16;
  */
 function rmsEnergy(pcmBuffer) {
   const samples = pcmBuffer.length / 2;
+  if (samples === 0) return 0;
   let sumSq = 0;
   for (let i = 0; i < samples; i++) {
     const s = pcmBuffer.readInt16LE(i * 2) / 32768;
@@ -69,8 +70,8 @@ export async function transcribe(pcmBuffer) {
     return null;
   }
 
-  const rmsThreshold = config.vad?.rmsThreshold ?? 0.008;
-  const minDurationMs = config.vad?.minUtteranceDurationMs ?? 500;
+  const rmsThreshold = config.vad.rmsThreshold;
+  const minDurationMs = config.vad.minUtteranceDurationMs;
 
   // Duration check
   const durationMs = (pcmBuffer.length / 2 / SAMPLE_RATE) * 1000;
@@ -92,15 +93,32 @@ export async function transcribe(pcmBuffer) {
   // Node 24 FormData accepts a Blob
   const blob = new Blob([wavBuffer], { type: 'audio/wav' });
   form.append('file', blob, 'audio.wav');
-  form.append('model',    config.asr?.model    ?? 'whisper-1');
-  form.append('language', config.asr?.language ?? 'en');
+  form.append('model',    config.asr.model);
+  if (config.asr.language) form.append('language', config.asr.language);
   form.append('response_format', 'text');
 
-  const res = await fetch(ASR_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${config.openaiApiKey}` },
-    body: form,
-  });
+  const timeoutMs = config.asr.timeoutMs;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res;
+  try {
+    res = await fetch(ASR_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${config.openaiApiKey}` },
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      console.error(`[ASR] Whisper API request timed out after ${timeoutMs}ms`);
+      return null;
+    }
+    console.error(`[ASR] Whisper API request failed: ${err.message}`);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -109,6 +127,10 @@ export async function transcribe(pcmBuffer) {
   }
 
   const transcript = (await res.text()).trim();
-  console.log(`[ASR] Transcript (RMS=${rms.toFixed(3)}, ${durationMs.toFixed(0)}ms): "${transcript}"`);
+  if (config.privacy.logTranscripts) {
+    console.log(`[ASR] Transcript (RMS=${rms.toFixed(3)}, ${durationMs.toFixed(0)}ms): "${transcript}"`);
+  } else {
+    console.log(`[ASR] Transcript accepted (chars=${transcript.length}, RMS=${rms.toFixed(3)}, ${durationMs.toFixed(0)}ms)`);
+  }
   return transcript || null;
 }

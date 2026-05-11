@@ -4,11 +4,50 @@ import { config } from './config.mjs';
 
 const RECONNECT_DELAY_MS   = 3000;
 const PING_INTERVAL_MS     = 30_000;
-const REQUEST_TIMEOUT_MS   = 60_000;
+const REQUEST_TIMEOUT_MS   = config.gateway.requestTimeoutMs;
+const CONNECT_TIMEOUT_MS   = config.gateway.connectTimeoutMs;
+const MAX_MESSAGE_BYTES    = config.gateway.maxMessageBytes;
+const MAX_AGENT_TEXT_CHARS = config.tts.maxInputChars;
 
 // Strip an optional signature line appended by an upstream agent.
 function stripSignature(text) {
-  return (text ?? '').replace(/\n\n[-\u2013\u2014][^\n]*$/, '').trim();
+  if (typeof text !== 'string') return '';
+  return text.replace(/\n\n[-\u2013\u2014][^\n]*$/, '').trim();
+}
+
+function rawMessageBytes(raw) {
+  if (typeof raw === 'string') return Buffer.byteLength(raw);
+  if (Buffer.isBuffer(raw)) return raw.length;
+  if (raw instanceof ArrayBuffer) return raw.byteLength;
+  if (Array.isArray(raw)) return raw.reduce((total, chunk) => total + rawMessageBytes(chunk), 0);
+  return 0;
+}
+
+function rawMessageText(raw) {
+  if (typeof raw === 'string') return raw;
+  if (Buffer.isBuffer(raw)) return raw.toString('utf8');
+  if (raw instanceof ArrayBuffer) return Buffer.from(raw).toString('utf8');
+  if (Array.isArray(raw)) return Buffer.concat(raw.map((chunk) => Buffer.from(chunk))).toString('utf8');
+  return '';
+}
+
+function isObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isGatewayMessage(msg) {
+  if (!isObject(msg) || typeof msg.type !== 'string' || msg.type.length > 32) return false;
+  if (msg.type === 'event') {
+    return typeof msg.event === 'string'
+      && msg.event.length <= 64
+      && (msg.payload == null || isObject(msg.payload));
+  }
+  if (msg.type === 'res') {
+    return typeof msg.id === 'string'
+      && msg.id.length <= 128
+      && typeof msg.ok === 'boolean';
+  }
+  return msg.type === 'ping' || msg.type === 'pong';
 }
 
 export class GatewayClient {
@@ -27,9 +66,14 @@ export class GatewayClient {
   async connect() {
     const url = config.gatewayUrl;
     console.log(`[GW] Connecting to ${url}...`);
+    this._sessionId = null;
 
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
+      const ws = new WebSocket(url, {
+        followRedirects: false,
+        handshakeTimeout: CONNECT_TIMEOUT_MS,
+        maxPayload: MAX_MESSAGE_BYTES,
+      });
       this._ws = ws;
       let connectId = null;
       let settled = false;
@@ -64,8 +108,21 @@ export class GatewayClient {
       };
 
       ws.on('message', (raw) => {
+        if (rawMessageBytes(raw) > MAX_MESSAGE_BYTES) {
+          const err = new Error(`Gateway message exceeded ${MAX_MESSAGE_BYTES} bytes`);
+          console.error('[GW] Closing connection:', err.message);
+          this._rejectInflight(err);
+          if (!this._sessionId) finishConnect(reject, err);
+          ws.close(1009, 'message too large');
+          return;
+        }
+
         let msg;
-        try { msg = JSON.parse(raw); } catch { return; }
+        try { msg = JSON.parse(rawMessageText(raw)); } catch { return; }
+        if (!isGatewayMessage(msg)) {
+          console.warn('[GW] Ignoring malformed gateway message');
+          return;
+        }
 
         // 1. Server sends challenge → we respond with the connect req
         if (msg.type === 'event' && msg.event === 'connect.challenge') {
@@ -106,15 +163,19 @@ export class GatewayClient {
       });
 
       ws.once('error', (err) => {
-        if (!this._sessionId) finishConnect(reject, err);
+        if (!settled || !this._sessionId) finishConnect(reject, err);
         else {
           this._rejectInflight(new Error(`Gateway connection error: ${err.message}`));
           this._scheduleReconnect();
         }
       });
 
-      ws.once('close', () => {
+      ws.once('close', (code, reason) => {
         this._stopPing();
+        if (!settled || !this._sessionId) {
+          finishConnect(reject, new Error(`Gateway connection closed before ready (${code}: ${reason.toString()})`));
+          return;
+        }
         if (!this._closed) {
           this._rejectInflight(new Error('Gateway connection lost'));
           this._scheduleReconnect();
@@ -199,14 +260,28 @@ export class GatewayClient {
     if (msg.type === 'event' && msg.event === 'chat') {
       const { state, runId, idempotencyKey, message } = msg.payload ?? {};
       // Extract text from content array (v3 format)
-      const rawText = message?.content?.find(c => c.type === 'text')?.text ?? '';
+      const content = Array.isArray(message?.content) ? message.content : [];
+      const rawText = content.find(c => c?.type === 'text' && typeof c.text === 'string')?.text ?? '';
       const text    = stripSignature(rawText);
 
       if (state === 'final') {
         const entry = this._chatWait.get(runId) ?? this._chatWait.get(idempotencyKey);
+        if (text.length > MAX_AGENT_TEXT_CHARS) {
+          const err = new Error(`Agent response exceeded ${MAX_AGENT_TEXT_CHARS} characters`);
+          console.warn('[GW] Agent response discarded:', err.message);
+          if (entry) {
+            this._clearChatWait(entry);
+            entry.reject(err);
+          }
+          return;
+        }
         if (entry) {
           this._clearChatWait(entry);
-          console.log(`[GW] Agent response: "${text.slice(0, 80)}"`);
+          if (config.privacy.logAgentResponses) {
+            console.log(`[GW] Agent response: "${text.slice(0, 80)}"`);
+          } else {
+            console.log(`[GW] Agent response received (${text.length} chars)`);
+          }
           entry.resolve(text || null);
         } else {
           // Push-event from another channel — route to callback
@@ -216,7 +291,8 @@ export class GatewayClient {
         const entry = this._chatWait.get(runId) ?? this._chatWait.get(idempotencyKey);
         if (entry) {
           this._clearChatWait(entry);
-          entry.reject(new Error('Agent error: ' + (rawText || 'unknown')));
+          const errorText = config.privacy.logAgentResponses ? (rawText || 'unknown') : 'gateway reported error';
+          entry.reject(new Error('Agent error: ' + errorText));
         }
       }
     }
@@ -247,6 +323,7 @@ export class GatewayClient {
   }
 
   _startPing() {
+    if (this._pingTimer) return;
     this._pingTimer = setInterval(() => {
       if (this._ws?.readyState === WebSocket.OPEN) {
         this._ws.send(JSON.stringify({ type: 'ping' }));
