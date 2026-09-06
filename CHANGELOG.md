@@ -6,6 +6,16 @@ All notable changes to VoiceOps are documented here.
 
 ### Security
 
+- Raised `discord.js` to 14.27.0 and `ws` to 8.21.3, and moved the `undici`, `tar`, `protobufjs`, and `sharp` overrides to patched releases so `npm audit` reports zero findings.
+- Added `npm run audit`, an allowlist-gated audit script (`scripts/audit.mjs`, `security/audit-allowlist.json`) that fails CI on any unlisted or expired advisory.
+- Recorded reviewed install scripts in `allowScripts`.
+
+### Added
+
+- GitHub Actions CI running syntax checks, the test suite, and the audit gate on Node 24.
+
+### Security (2026-05-11 hardening)
+
 - Added schema/range validation for Discord IDs, gateway URL policy, VAD, ASR, pipeline, and TTS settings.
 - Rejected remote plaintext gateway URLs by default unless explicitly allowed for a trusted private network.
 - Added active PCM stream caps, ASR timeout, gateway message size limits, agent response length limits, and TTS input/output caps.

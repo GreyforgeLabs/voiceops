@@ -1,0 +1,4 @@
+{
+  "description": "Advisories accepted for a bounded period. Each entry needs a package name, a reason, and an ISO expiry date. scripts/audit.mjs fails on any finding not listed here or whose allowance has expired.",
+  "entries": []
+}
