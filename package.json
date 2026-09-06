@@ -1,6 +1,6 @@
 {
   "name": "voiceops",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "VoiceOps: Full-duplex Discord voice pipeline for agent gateways",
   "author": "Greyforge Labs (https://greyforge.tech)",
   "homepage": "https://greyforge.tech/chronicles/voiceops-integration",
