@@ -10,9 +10,10 @@ const MAX_MESSAGE_BYTES    = config.gateway.maxMessageBytes;
 const MAX_AGENT_TEXT_CHARS = config.tts.maxInputChars;
 
 // Strip an optional signature line appended by an upstream agent.
-function stripSignature(text) {
+function stripSignature(text, { preserveTrailing = false } = {}) {
   if (typeof text !== 'string') return '';
-  return text.replace(/\n\n[-\u2013\u2014][^\n]*$/, '').trim();
+  const unsigned = text.replace(/\n\n[-\u2013\u2014][^\n]*$/, '');
+  return preserveTrailing ? unsigned.trimStart() : unsigned.trim();
 }
 
 function rawMessageBytes(raw) {
@@ -184,8 +185,8 @@ export class GatewayClient {
     });
   }
 
-  /** Send a voice-sourced chat message; resolves with the final agent response text. */
-  async sendVoiceTurn(text) {
+  /** Send a voice turn; forward growing text snapshots and resolve on final text. */
+  async sendVoiceTurn(text, { onTextSnapshot } = {}) {
     if (!this._ws || this._ws.readyState !== WebSocket.OPEN) {
       throw new Error('Gateway is not connected');
     }
@@ -200,7 +201,15 @@ export class GatewayClient {
         this._clearChatWait(entry);
         reject(new Error('Agent response timed out'));
       }, REQUEST_TIMEOUT_MS);
-      entry = { resolve, reject, timer, keys: new Set([idempotencyKey]) };
+      entry = {
+        resolve,
+        reject,
+        timer,
+        keys: new Set([idempotencyKey]),
+        onTextSnapshot,
+        partialText: '',
+        lastNotifiedText: '',
+      };
       this._chatWait.set(idempotencyKey, entry);
     });
 
@@ -256,16 +265,51 @@ export class GatewayClient {
       return;
     }
 
-    // Route chat events to pending sendVoiceTurn promises
+    // Route chat events to pending sendVoiceTurn promises. Partial states are
+    // cumulative snapshots in protocol v3; protocol v4 also carries deltaText.
     if (msg.type === 'event' && msg.event === 'chat') {
       const { state, runId, idempotencyKey, message } = msg.payload ?? {};
-      // Extract text from content array (v3 format)
+      const payload = msg.payload ?? {};
+      const entry = this._chatWait.get(runId) ?? this._chatWait.get(idempotencyKey);
+      // Text remains in the message content array; protocol v4 additionally
+      // carries deltaText for incremental and replacement updates.
       const content = Array.isArray(message?.content) ? message.content : [];
       const rawText = content.find(c => c?.type === 'text' && typeof c.text === 'string')?.text ?? '';
       const text    = stripSignature(rawText);
 
+      if (state === 'delta') {
+        if (!entry) return;
+        const deltaText = typeof payload.deltaText === 'string' ? payload.deltaText : null;
+        const previousVisible = stripSignature(entry.partialText);
+        if (payload.replace === true && deltaText !== null) {
+          entry.partialText = deltaText;
+        } else if (deltaText !== null) {
+          if (text.startsWith(previousVisible) && text.length > previousVisible.length) {
+            // Prefer an advanced cumulative snapshot. If it is stale or
+            // absent, append the explicit delta instead.
+            entry.partialText = rawText;
+          } else {
+            entry.partialText += deltaText;
+          }
+        } else if (rawText) {
+          // Protocol v3 supplies only the cumulative snapshot. A non-prefix
+          // snapshot is a model revision; the consumer sees the replacement.
+          entry.partialText = rawText;
+        }
+
+        const partialText = stripSignature(entry.partialText, { preserveTrailing: true });
+        if (partialText.length > MAX_AGENT_TEXT_CHARS) {
+          const err = new Error(`Agent response exceeded ${MAX_AGENT_TEXT_CHARS} characters`);
+          console.warn('[GW] Agent response discarded:', err.message);
+          this._clearChatWait(entry);
+          entry.reject(err);
+          return;
+        }
+        this._notifyTextSnapshot(entry, partialText);
+        return;
+      }
+
       if (state === 'final') {
-        const entry = this._chatWait.get(runId) ?? this._chatWait.get(idempotencyKey);
         if (text.length > MAX_AGENT_TEXT_CHARS) {
           const err = new Error(`Agent response exceeded ${MAX_AGENT_TEXT_CHARS} characters`);
           console.warn('[GW] Agent response discarded:', err.message);
@@ -276,13 +320,14 @@ export class GatewayClient {
           return;
         }
         if (entry) {
+          this._notifyTextSnapshot(entry, text || stripSignature(entry.partialText), { final: true });
           this._clearChatWait(entry);
           if (config.privacy.logAgentResponses) {
             console.log(`[GW] Agent response: "${text.slice(0, 80)}"`);
           } else {
             console.log(`[GW] Agent response received (${text.length} chars)`);
           }
-          entry.resolve(text || null);
+          entry.resolve(text || stripSignature(entry.partialText) || null);
         } else {
           // Push-event from another channel — route to callback
           if (text) this._onAgentResponse(text);
@@ -295,6 +340,16 @@ export class GatewayClient {
           entry.reject(new Error('Agent error: ' + errorText));
         }
       }
+    }
+  }
+
+  _notifyTextSnapshot(entry, text, { final = false } = {}) {
+    if (!text || text === entry.lastNotifiedText) return;
+    entry.lastNotifiedText = text;
+    try {
+      entry.onTextSnapshot?.(text, { final });
+    } catch (err) {
+      console.warn('[GW] Text snapshot callback failed:', err.message);
     }
   }
 

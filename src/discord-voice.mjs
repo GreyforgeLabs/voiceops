@@ -100,7 +100,7 @@ export class DiscordVoiceManager {
   }
 
   /** Play a WAV buffer through the voice channel. */
-  async speak(wavBuffer) {
+  async speak(wavBuffer, { onStart } = {}) {
     if (!this._connection) {
       console.warn('[VC] speak() called but not connected');
       return;
@@ -110,16 +110,23 @@ export class DiscordVoiceManager {
     const stream   = Readable.from(wavBuffer);
     const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
 
-    this._player.play(resource);
-
     return new Promise((resolve) => {
-      const onIdle = (oldState, newState) => {
+      let started = false;
+      const onStateChange = (oldState, newState) => {
+        if (newState.status === AudioPlayerStatus.Playing && !started) {
+          started = true;
+          onStart?.();
+        }
         if (newState.status === AudioPlayerStatus.Idle) {
-          this._player.off('stateChange', onIdle);
+          this._player.off('stateChange', onStateChange);
           resolve();
         }
       };
-      this._player.on('stateChange', onIdle);
+      this._player.on('stateChange', onStateChange);
+      this._player.play(resource);
+      if (this._player.state.status === AudioPlayerStatus.Playing && !started) {
+        onStateChange(null, this._player.state);
+      }
     });
   }
 
