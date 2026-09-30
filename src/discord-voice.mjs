@@ -52,6 +52,7 @@ export class DiscordVoiceManager {
     this._connection  = null;
     this._player      = createAudioPlayer();
     this._listening   = false;
+    this._cancelPlayback = null;
   }
 
   /** Join the configured voice channel. */
@@ -100,32 +101,78 @@ export class DiscordVoiceManager {
   }
 
   /** Play a WAV buffer through the voice channel. */
-  async speak(wavBuffer, { onStart } = {}) {
+  async speak(wavBuffer, { onStart, signal } = {}) {
+    signal?.throwIfAborted();
     if (!this._connection) {
       console.warn('[VC] speak() called but not connected');
       return;
     }
 
+    this._cancelPlayback?.(new DOMException('Playback replaced', 'AbortError'));
+
     // Wrap the WAV buffer in a readable stream
     const stream   = Readable.from(wavBuffer);
     const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
 
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let started = false;
+      let settled = false;
+      const cleanup = () => {
+        this._player.off('stateChange', onStateChange);
+        this._player.off('error', onError);
+        signal?.removeEventListener('abort', onAbort);
+        if (this._cancelPlayback === cancelPlayback) this._cancelPlayback = null;
+      };
+      const finish = (err, stop = false) => {
+        if (settled) return;
+        settled = true;
+        try {
+          if (stop) {
+            this._player.stop(true);
+            resource.playStream.destroy();
+            stream.destroy();
+          }
+        } catch (stopError) {
+          err ??= stopError;
+        } finally {
+          cleanup();
+        }
+        if (stop) reject(err);
+        else resolve();
+      };
+      const cancelPlayback = (err) => finish(err, true);
+      const onAbort = () => cancelPlayback(signal.reason ?? new DOMException('Playback aborted', 'AbortError'));
+      const onError = (err) => cancelPlayback(err);
       const onStateChange = (oldState, newState) => {
+        if (settled) return;
         if (newState.status === AudioPlayerStatus.Playing && !started) {
           started = true;
-          onStart?.();
+          try {
+            onStart?.();
+          } catch (err) {
+            cancelPlayback(err);
+            return;
+          }
         }
         if (newState.status === AudioPlayerStatus.Idle) {
-          this._player.off('stateChange', onStateChange);
-          resolve();
+          finish();
         }
       };
+      this._cancelPlayback = cancelPlayback;
       this._player.on('stateChange', onStateChange);
-      this._player.play(resource);
-      if (this._player.state.status === AudioPlayerStatus.Playing && !started) {
-        onStateChange(null, this._player.state);
+      this._player.on('error', onError);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      try {
+        this._player.play(resource);
+        if (this._player.state.status === AudioPlayerStatus.Playing && !started) {
+          onStateChange(null, this._player.state);
+        }
+      } catch (err) {
+        cancelPlayback(err);
       }
     });
   }
@@ -243,6 +290,11 @@ export class DiscordVoiceManager {
   /** Leave the voice channel and clean up. */
   leave() {
     this._listening = false;
+    if (this._cancelPlayback) {
+      this._cancelPlayback(new DOMException('Voice channel left', 'AbortError'));
+    } else {
+      this._player.stop(true);
+    }
     this._connection?.destroy();
     this._connection = null;
   }

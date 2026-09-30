@@ -64,9 +64,11 @@ export function isWaveBuffer(buffer) {
  * (including the WASM cleanup call). WAV bytes are returned via stdout.
  *
  * @param {string} text
- * @returns {Promise<Buffer|null>}  WAV buffer (24kHz mono 16-bit), or null on failure
+ * @param {{signal?: AbortSignal}} options
+ * @returns {Promise<Buffer|null>} WAV buffer (24kHz mono 16-bit), or null for empty text
  */
-export async function synthesize(text) {
+export async function synthesize(text, { signal } = {}) {
+  signal?.throwIfAborted();
   const normalizedText = String(text ?? '').trim();
   const voice = config.tts.voice;
   const speed = String(config.tts.speed);
@@ -91,23 +93,33 @@ export async function synthesize(text) {
     const wavChunks = [];
     let wavBytes = 0;
     let stderrBytes = 0;
-    let timedOut = false;
     let settled = false;
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', onAbort);
+      proc.stdout.off('data', onStdout);
+      proc.stderr.off('data', onStderr);
+    };
 
     const fail = (err, kill = true) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
-      if (kill && proc.exitCode == null) proc.kill('SIGKILL');
+      cleanup();
+      try {
+        if (kill && proc.exitCode == null) proc.kill('SIGKILL');
+      } catch (killError) {
+        console.error('[TTS] Failed to stop worker:', killError.message);
+      }
       reject(err);
     };
 
+    const onAbort = () => fail(signal.reason ?? new DOMException('Synthesis aborted', 'AbortError'));
     const timeout = setTimeout(() => {
-      timedOut = true;
       fail(new Error(`TTS worker timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
-    proc.stdout.on('data', (chunk) => {
+    const onStdout = (chunk) => {
       if (settled) return;
       wavBytes += chunk.length;
       if (wavBytes > maxOutputBytes) {
@@ -115,31 +127,38 @@ export async function synthesize(text) {
         return;
       }
       wavChunks.push(chunk);
-    });
-    proc.stderr.on('data', (d) => {
+    };
+    const onStderr = (d) => {
       const remaining = STDERR_LOG_BYTES - stderrBytes;
       if (remaining <= 0) return;
       const slice = d.subarray(0, remaining);
       stderrBytes += slice.length;
       const msg = slice.toString().trim();
       if (msg) console.log(`[TTS]`, msg);
-    });
-    proc.stdin.on('error', () => {
-      // The worker may be killed after a timeout or size cap while stdin is still draining.
-    });
+    };
+    const onStdinError = () => {
+      // A killed worker may close stdin while it is still draining. Keep this
+      // handler until close so late EPIPE errors cannot escape after cancellation.
+    };
 
-    proc.on('error', (err) => {
+    const onError = (err) => {
       fail(new Error(`TTS worker spawn failed: ${err.message}`), false);
-    });
+    };
 
-    proc.on('close', (code, signal) => {
-      if (settled || timedOut) return;
+    proc.stdout.on('data', onStdout);
+    proc.stderr.on('data', onStderr);
+    proc.stdin.on('error', onStdinError);
+    proc.on('error', onError);
+    proc.once('close', (code, exitSignal) => {
+      proc.off('error', onError);
+      proc.stdin.off('error', onStdinError);
+      if (settled) return;
       settled = true;
-      clearTimeout(timeout);
+      cleanup();
 
       const wav = Buffer.concat(wavChunks);
-      if (signal || !ALLOWED_TTS_EXIT_CODES.has(code)) {
-        reject(new Error(`TTS worker exited ${signal ?? code}`));
+      if (exitSignal || !ALLOWED_TTS_EXIT_CODES.has(code)) {
+        reject(new Error(`TTS worker exited ${exitSignal ?? code}`));
         return;
       }
       if (!isWaveBuffer(wav)) {
@@ -150,8 +169,18 @@ export async function synthesize(text) {
       resolve(wav);
     });
 
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+
     // Write text to worker stdin
-    proc.stdin.write(normalizedText, 'utf8');
-    proc.stdin.end();
+    try {
+      proc.stdin.write(normalizedText, 'utf8');
+      proc.stdin.end();
+    } catch (err) {
+      fail(err);
+    }
   });
 }

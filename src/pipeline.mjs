@@ -32,11 +32,14 @@ export class VoicePipeline {
     this._queue           = [];    // pending utterances while speaking
     this._processing      = false; // true while ASR/LLM in flight
     this._agentResolve    = null;  // resolve() for pending agent response
+    this._stopped         = false;
+    this._activeTurn      = null;
     this._utteranceLog    = [];    // timestamps for rate limiting (rolling 60s)
   }
 
   /** Start the pipeline — connects gateway, joins VC. */
   async start() {
+    this._stopped = false;
     await this._gateway.connect();
     await this._voice.join();
     console.log('[Pipeline] VoiceOps pipeline running. Listening for Operator.');
@@ -44,6 +47,7 @@ export class VoicePipeline {
 
   /** Called by DiscordVoiceManager when an utterance PCM buffer is ready. */
   async _onUtterance(pcmBuffer) {
+    if (this._stopped) return;
     const utteranceDurationMs = (pcmBuffer.length / 2 / 16_000) * 1000;
     const capturedAt = performance.now();
 
@@ -80,12 +84,19 @@ export class VoicePipeline {
   }
 
   async _processUtterance(pcmBuffer, capturedAt = performance.now()) {
+    if (this._stopped) return;
     this._processing = true;
+    const controller = new AbortController();
+    const { signal } = controller;
+    this._activeTurn = controller;
+    let cueSynthesisPromise = null;
+    let synthesisSlot = Promise.resolve();
     let cuePlaybackPromise = null;
     let speechChain = Promise.resolve();
     let latestText = '';
     let queuedTextOffset = 0;
     let streamStopped = false;
+    let acceptingSnapshots = true;
     let gatewayStartedAt = null;
     let firstDeltaLogged = false;
     let firstTtsLogged = false;
@@ -93,21 +104,39 @@ export class VoicePipeline {
 
     const elapsedMs = (start) => Math.round(performance.now() - start);
     const enqueueSpeech = (text) => {
-      speechChain = speechChain.then(async () => {
-        const wavBuffer = await this._synthesizeAudio(text);
-        if (!wavBuffer) {
-          console.warn('[Pipeline] TTS returned null for a response chunk');
-          return;
+      // A chunk may synthesize when its predecessor starts playback, never
+      // earlier. This keeps one TTS worker and at most one prefetched WAV,
+      // while speechChain remains the sole ordered playback consumer.
+      const synthesized = synthesisSlot.then(async () => {
+        if (cueSynthesisPromise) await cueSynthesisPromise;
+        if (signal.aborted) return null;
+        const wavBuffer = await this._synthesizeAudio(text, { signal });
+        if (signal.aborted) return null;
+        if (!wavBuffer?.length) {
+          console.warn('[Pipeline] TTS returned no audio for a response chunk');
+          return null;
         }
         if (!firstTtsLogged) {
           firstTtsLogged = true;
           console.info(`[Latency] First TTS chunk ready (${elapsedMs(capturedAt)}ms after VAD end)`);
         }
+        return wavBuffer;
+      }).catch((err) => {
+        if (!signal.aborted) console.error('[Pipeline] Response synthesis failed:', err.message);
+        return null;
+      });
+      let releaseSlot;
+      synthesisSlot = new Promise(resolve => { releaseSlot = resolve; });
+      speechChain = speechChain.then(async () => {
+        const wavBuffer = await synthesized;
         if (cuePlaybackPromise) {
           await cuePlaybackPromise;
           cuePlaybackPromise = null;
         }
+        releaseSlot();
+        if (signal.aborted || !wavBuffer) return;
         await this._voice.speak(wavBuffer, {
+          signal,
           onStart: () => {
             if (firstPlaybackLogged) return;
             firstPlaybackLogged = true;
@@ -115,12 +144,17 @@ export class VoicePipeline {
           },
         });
       }).catch((err) => {
-        console.error('[Pipeline] Response chunk failed:', err.message);
-      });
+        if (!signal.aborted) console.error('[Pipeline] Response chunk failed:', err.message);
+      }).finally(releaseSlot);
     };
 
     const consumeSnapshot = (snapshot, { flush = false } = {}) => {
-      if (typeof snapshot !== 'string' || !snapshot) return;
+      if (signal.aborted || typeof snapshot !== 'string' || !snapshot) return;
+      if (snapshot.length > MAX_AGENT_TEXT_CHARS) {
+        streamStopped = true;
+        console.warn('[Pipeline] Agent snapshot exceeded response character limit');
+        return;
+      }
       if (snapshot === latestText && !flush) return;
 
       if (latestText && !snapshot.startsWith(latestText)) {
@@ -157,6 +191,7 @@ export class VoicePipeline {
     try {
       // Step 1: ASR
       const transcript = await this._transcribeAudio(pcmBuffer);
+      if (signal.aborted) return;
       if (!transcript) {
         console.log('[Pipeline] Empty/silent transcript — skipping');
         return;
@@ -174,6 +209,7 @@ export class VoicePipeline {
       gatewayStartedAt = performance.now();
       const agentTextPromise = this._gateway.sendVoiceTurn(transcript, {
         onTextSnapshot: (snapshot, { final = false } = {}) => {
+          if (!acceptingSnapshots || signal.aborted) return;
           if (!final && !firstDeltaLogged) {
             firstDeltaLogged = true;
             console.info(`[Latency] First gateway text delta (${elapsedMs(gatewayStartedAt)}ms after request, ${elapsedMs(capturedAt)}ms after VAD end)`);
@@ -185,8 +221,14 @@ export class VoicePipeline {
 
       // Step 2: Optional "thinking" cue to mask gateway latency
       if (THINKING_CUE_ENABLED) {
-        cuePlaybackPromise = this._synthesizeAudio(THINKING_CUE_TEXT)
-          .then((cueWav) => cueWav ? this._voice.speak(cueWav) : null)
+        cueSynthesisPromise = Promise.resolve().then(() => signal.aborted
+          ? null : this._synthesizeAudio(THINKING_CUE_TEXT, { signal }))
+          .catch((err) => {
+            if (!signal.aborted) console.warn('[Pipeline] Thinking cue synthesis failed:', err.message);
+            return null;
+          });
+        cuePlaybackPromise = cueSynthesisPromise
+          .then((cueWav) => !signal.aborted && cueWav?.length ? this._voice.speak(cueWav, { signal }) : null)
           .catch((err) => {
             console.warn('[Pipeline] Thinking cue failed:', err.message);
             return null;
@@ -195,6 +237,8 @@ export class VoicePipeline {
 
       // Step 3: Wait for the final response, then flush its last partial sentence.
       const agentText = await agentTextPromise;
+      acceptingSnapshots = false;
+      if (signal.aborted) return;
       console.info(`[Latency] Final gateway response (${elapsedMs(gatewayStartedAt)}ms after request, ${elapsedMs(capturedAt)}ms after VAD end)`);
       if (!agentText) {
         console.warn('[Pipeline] No agent response received');
@@ -218,16 +262,19 @@ export class VoicePipeline {
     } catch (err) {
       console.error('[Pipeline] Error processing utterance:', err.message);
     } finally {
+      acceptingSnapshots = false;
       if (cuePlaybackPromise) {
         await cuePlaybackPromise;
       }
       await speechChain;
+      controller.abort();
+      this._activeTurn = null;
       this._processing = false;
 
       // Drain queue
-      if (this._queue.length > 0) {
+      if (!this._stopped && this._queue.length > 0) {
         const next = this._queue.shift();
-        setImmediate(() => this._processUtterance(next.pcmBuffer, next.capturedAt));
+        void this._processUtterance(next.pcmBuffer, next.capturedAt);
       }
     }
   }
@@ -241,6 +288,9 @@ export class VoicePipeline {
   /** Graceful shutdown. */
   async stop() {
     console.log('[Pipeline] Shutting down...');
+    this._stopped = true;
+    this._queue.length = 0;
+    this._activeTurn?.abort();
     this._voice.leave();
     this._gateway.close();
   }

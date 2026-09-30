@@ -37,6 +37,8 @@ Discord voice -> Opus decode -> silence gate -> transcription -> agent gateway -
 - Queue, utterance-duration cap, streaming PCM cap, and per-minute rate cap to avoid runaway transcription usage.
 - Gateway, ASR, and TTS timeout/size limits with redacted transcript and response logs by default.
 - Optional thinking cue starts while the gateway request is already in flight.
+- Ordered sentence playback with one-chunk-ahead TTS synthesis to overlap synthesis with playback, without parallel TTS workers or an unbounded audio queue.
+- Shutdown cancels active speech and discards prefetched audio and queued utterances.
 - Plain JSON config, no required database.
 
 ## Requirements
@@ -163,7 +165,7 @@ voiceops/
 npm test
 ```
 
-The test command syntax-checks all `.mjs` files. Runtime verification requires Discord credentials, a gateway, and a transcription key.
+The test command syntax-checks all `.mjs` files and runs the Node.js test suite, including deterministic synthesis/playback scheduling and cancellation tests. Live end-to-end verification requires Discord credentials, a gateway, and a transcription key.
 
 ## Security Notes
 
